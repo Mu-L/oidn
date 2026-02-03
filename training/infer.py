@@ -138,24 +138,24 @@ def main():
   metric_count = 0
 
   # Saves an image in different formats
-  def save_images(path, image, image_srgb, num_channels, feature_ext=infer.main_feature):
+  def save_images(name, image, image_srgb, num_channels, feature_ext=infer.main_feature):
     if feature_ext == 'sh1':
       # Iterate over x, y, z
       for i, axis in [(0, 'x'), (3, 'y'), (6, 'z')]:
-        save_images(path, image[:, i:i+3, ...], image_srgb[:, i:i+3, ...], num_channels, 'sh1' + axis)
+        save_images(name, image[:, i:i+3], image_srgb[:, i:i+3], num_channels, 'sh1' + axis)
       return
 
     image      = tensor_to_image(image)
     image_srgb = tensor_to_image(image_srgb)
-    filename_prefix = path + '.' + feature_ext + '.'
     for format in cfg.format:
+      filename = (name % ('.' + feature_ext)) + '.' + format
       if format in {'exr', 'pfm', 'phm', 'hdr'}:
         # Transform to original range
         if infer.main_feature in {'sh1', 'nrm'}:
           image = image * 2. - 1. # [0..1] -> [-1..1]
-        save_image(filename_prefix + format, image, num_channels=num_channels[feature_ext])
+        save_image(filename, image, num_channels=num_channels[feature_ext])
       else:
-        save_image(filename_prefix + format, image_srgb, num_channels=num_channels[feature_ext])
+        save_image(filename, image_srgb, num_channels=num_channels[feature_ext])
 
   with torch.inference_mode():
     for group, input_names, target_name in image_sample_groups:
@@ -164,25 +164,37 @@ def main():
       if not os.path.isdir(output_group_dir):
         os.makedirs(output_group_dir)
 
-      # Load metadata for the images if it exists
-      tonemap_exposure = 1.
-      metadata = load_image_metadata(os.path.join(data_dir, group))
-      if metadata:
-        tonemap_exposure = metadata['exposure']
-        save_image_metadata(os.path.join(output_dir, group), metadata)
-
       # Load the target image if it exists
+      target_tonemap_exposure = 1.
+
       if target_name:
         target, target_num_channels = load_image_features(os.path.join(data_dir, target_name), infer.main_feature)
         target = image_to_tensor(target, batch=True).to(device)
-        target_srgb = transform_feature(target, infer.main_feature, 'srgb', tonemap_exposure)
+        target_metadata = load_image_metadata(os.path.join(data_dir, target_name))
+
+        # Determine the tonemap exposure for the target image
+        if cfg.exposure is not None:
+          target_tonemap_exposure = cfg.exposure
+        elif target_metadata and 'exposure' in target_metadata:
+          target_tonemap_exposure = target_metadata['exposure']
+
+        target_srgb = transform_feature(target, infer.main_feature, 'srgb', target_tonemap_exposure)
 
       # Iterate over the input images
       for input_name in input_names:
-        print(input_name, '...', end='', flush=True)
+        print(input_name % '', '...', end='', flush=True)
 
         # Load the input image
         input, input_num_channels = load_image_features(os.path.join(data_dir, input_name), infer.features)
+        input_metadata = load_image_metadata(os.path.join(data_dir, input_name))
+
+        # Determine the tonemap exposure for the input image
+        if cfg.exposure is not None:
+          tonemap_exposure = cfg.exposure
+        elif input_metadata and 'exposure' in input_metadata:
+          tonemap_exposure = input_metadata['exposure']
+        else:
+          tonemap_exposure = target_tonemap_exposure
 
         # Compute the autoexposure value
         exposure = autoexposure(input) if infer.main_feature == 'hdr' else 1.
@@ -208,7 +220,7 @@ def main():
 
         # Save the input and output images
         output_suffix = cfg.result if cfg.output_suffix is None else cfg.output_suffix
-        output_name = input_name + '.' + output_suffix
+        output_name = input_name % f'.{output_suffix}%s'
         if cfg.num_epochs:
           output_name += f'_{epoch}'
         if cfg.save_all:

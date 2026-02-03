@@ -18,7 +18,7 @@ def main():
   image, _ = load_image(cfg.input)
 
   # Load metadata for the image if it exists
-  tonemap_exposure = cfg.exposure
+  tonemap_exposure = cfg.exposure if cfg.exposure is not None else 1.
   metadata = load_image_metadata(cfg.input)
   if metadata:
     tonemap_exposure = metadata['exposure']

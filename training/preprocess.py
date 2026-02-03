@@ -77,7 +77,8 @@ def main():
     samples = []
 
     # Load the target image
-    print(target_name)
+    target_id = target_name % ''
+    print(target_id)
     target_image, _ = load_image_features(os.path.join(input_dir, target_name), target_features)
 
     # Compute the autoexposure value
@@ -87,12 +88,13 @@ def main():
     target_image = preprocess_image(target_image, exposure)
 
     # Save the target image
-    output_tza.write(target_name, target_image, 'hwc')
+    output_tza.write(target_id, target_image, 'hwc')
 
     # Process the input images
     for input_name in input_names:
       # Load the image
-      print(input_name)
+      input_id = input_name % ''
+      print(input_id)
       input_image, _ = load_image_features(os.path.join(input_dir, input_name), input_features)
 
       if input_image.shape[0:2] != target_image.shape[0:2]:
@@ -102,10 +104,10 @@ def main():
       input_image = preprocess_image(input_image, exposure, prefilter=True)
 
       # Save the image
-      output_tza.write(input_name, input_image, 'hwc')
+      output_tza.write(input_id, input_image, 'hwc')
 
       # Add sample
-      samples.append((input_name, target_name))
+      samples.append((input_id, target_id))
 
     return samples
 

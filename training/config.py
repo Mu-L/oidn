@@ -182,8 +182,8 @@ def parse_args(cmd=None, description=None):
     parser.add_argument('output', type=str,
                         help='output image')
 
-  if cmd in {'convert_image', 'compare_image'}:
-    parser.add_argument('--exposure', '-E', type=float, default=1.,
+  if cmd in {'infer', 'convert_image', 'compare_image'}:
+    parser.add_argument('--exposure', '-E', type=float, default=None,
                         help='linear exposure scale for HDR image')
 
   if cmd in {'split_exr'}:

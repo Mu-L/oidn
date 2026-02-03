@@ -57,55 +57,62 @@ def shuffle_channels(channels, first_channel, order, num_channels=None):
   if num_channels is not None:
     del channels[first+num_channels:first+len(new_channels)]
 
-# Checks whether the image with specified features exists
-def image_exists(name, features):
-  suffixes = features.copy()
-  if 'sh1' in suffixes:
-    suffixes.remove('sh1')
-    suffixes += ['sh1x', 'sh1y', 'sh1z']
-  return all([os.path.isfile(name + '.' + s + '.exr') for s in suffixes])
+# Checks whether the specified image feature files exist (name is a format string, e.g. 'image%s.01')
+def image_features_exist(name, features):
+  name = (name % '.%s') + '.exr'
+  feature_exts = features.copy()
+  if 'sh1' in feature_exts:
+    feature_exts.remove('sh1')
+    feature_exts += ['sh1x', 'sh1y', 'sh1z']
+  return all([os.path.isfile(name % feature_ext) for feature_ext in feature_exts])
 
 # Returns the feature an image represents given its filename
 def get_image_feature(filename):
-  filename_split = filename.rsplit('.', 2)
-  if len(filename_split) < 2:
-    return 'srgb' # no extension, assume sRGB
+  filename_split = filename.rsplit('.', 3)
+  if len(filename_split) == 1:
+    return 'srgb' # no format extension, assume sRGB
   else:
-    ext = filename_split[-1].lower()
-    if ext in {'exr', 'pfm', 'phm', 'hdr'}:
-      if len(filename_split) == 3:
+    format_ext = filename_split[-1].lower()
+    if format_ext in {'exr', 'pfm', 'phm', 'hdr'}:
+      # Identify the feature extension, ignore the optional frame number
+      if len(filename_split) >= 3 and not filename_split[-2].isdecimal():
         feature = filename_split[-2]
-        if feature in {'sh1x', 'sh1y', 'sh1z'}:
-          feature = 'sh1'
-        return feature
+      elif len(filename_split) >= 4 and not filename_split[-3].isdecimal():
+        feature = filename_split[-3]
       else:
-        return 'hdr' # assume HDR
+        return 'hdr' # no feature extension, assume HDR
+
+      if feature in {'sh1x', 'sh1y', 'sh1z'}:
+        feature = 'sh1'
+      return feature
     else:
       return 'srgb' # assume sRGB
 
-# Loads image features in EXR format with given filename prefix, and returns the concatenated image
-# and the number of channels loaded for each feature
+# Loads image features in EXR format, where name is a format string returned by
+# get_image_sample_groups() (e.g. 'image%s.01'), and returns the concatenated image and the number
+# of channels loaded per feature
 def load_image_features(name, features):
+  name = (name % '.%s') + '.exr'
   images = []
   num_channels = {}
 
   # HDR color
   if 'hdr' in features:
-    hdr, num_channels['hdr'] = load_image(name + '.hdr.exr', num_channels=3)
+    hdr, num_channels['hdr'] = load_image(name % 'hdr', num_channels=3)
     hdr = np.maximum(hdr, 0.)
     images.append(hdr)
 
   # LDR color
   if 'ldr' in features:
-    ldr, num_channels['ldr'] = load_image(name + '.ldr.exr', num_channels=3)
+    ldr, num_channels['ldr'] = load_image(name % 'ldr', num_channels=3)
     ldr = np.clip(ldr, 0., 1.)
     images.append(ldr)
 
   # SH L1 color coefficients
   if 'sh1' in features:
-    sh1x, num_channels['sh1x'] = load_image(name + '.sh1x.exr', num_channels=3)
-    sh1y, num_channels['sh1y'] = load_image(name + '.sh1y.exr', num_channels=3)
-    sh1z, num_channels['sh1z'] = load_image(name + '.sh1z.exr', num_channels=3)
+    sh1x, num_channels['sh1x'] = load_image(name % 'sh1x', num_channels=3)
+    sh1y, num_channels['sh1y'] = load_image(name % 'sh1y', num_channels=3)
+    sh1z, num_channels['sh1z'] = load_image(name % 'sh1z', num_channels=3)
 
     for sh1 in [sh1x, sh1y, sh1z]:
       # Clip to [-1..1] range (coefficients are assumed to be normalized)
@@ -118,13 +125,13 @@ def load_image_features(name, features):
 
   # Albedo
   if 'alb' in features:
-    albedo, num_channels['alb'] = load_image(name + '.alb.exr', num_channels=3)
+    albedo, num_channels['alb'] = load_image(name % 'alb', num_channels=3)
     albedo = np.clip(albedo, 0., 1.)
     images.append(albedo)
 
   # Normal
   if 'nrm' in features:
-    normal, num_channels['nrm'] = load_image(name + '.nrm.exr', num_channels=3)
+    normal, num_channels['nrm'] = load_image(name % 'nrm', num_channels=3)
     normal = np.clip(normal, -1., 1.)
 
     # Transform to [0..1] range
@@ -134,7 +141,7 @@ def load_image_features(name, features):
 
   # Depth
   if 'z' in features:
-    depth, num_channels['z'] = load_image(name + '.z.exr', num_channels=1)
+    depth, num_channels['z'] = load_image(name % 'z', num_channels=1)
     depth = np.maximum(depth, 0.)
 
     # If this is an auxiliary feature, transform to [0..1] range
@@ -149,19 +156,16 @@ def load_image_features(name, features):
   # Concatenate all feature images into one image
   return np.concatenate(images, axis=2), num_channels
 
-# Tries to load metadata for an image with given filename/prefix, returns None if it fails
+# Loads image metadata in JSON format if it exists, where name is optionally a format string
+# returned by get_image_sample_groups() (e.g. 'image%s.01'),
 def load_image_metadata(name):
-  dirname, basename = os.path.split(name)
-  basename = basename.split('.')[0] # remove all extensions
-  while basename:
-    metadata_filename = os.path.join(dirname, basename) + '.json'
-    if os.path.isfile(metadata_filename):
-      return load_json(metadata_filename)
-    if '_' in basename:
-      basename = basename.rsplit('_', 1)[0]
-    else:
-      break
-  return None
+  if '%s' in name:
+    name = name % ''
+  name += '.json'
+  if os.path.isfile(name):
+    return load_json(name)
+  else:
+    return {}
 
 # Saves image metadata to a file with given prefix
 def save_image_metadata(name, metadata):
@@ -180,19 +184,42 @@ def get_image_sample_groups(dir, input_features, target_features=None):
 
   # Make image groups
   image_groups = defaultdict(set)
+
   for filename in image_filenames:
-    image_name = os.path.relpath(filename, dir)  # remove dir path
-    image_name, _, _ = image_name.rsplit('.', 2) # remove extensions
-    group = image_name
-    if '_' in image_name:
-      prefix, suffix = image_name.rsplit('_', 1)
-      suffix = suffix.lower()
+    # Process the image filename
+    filename = os.path.relpath(filename, dir) # remove directory path
+    filename = filename.replace('%', '%%')    # escape for string formatting
+    filename_split = filename.rsplit('.', 3)
+    group_name = filename_split[0]
+
+    # Identify the feature extension and the optional frame number
+    feature_ext_idx = None
+    frame_str = None
+    for i in range(1, len(filename_split)-1):
+      if filename_split[i].isdecimal():
+        frame_str = filename_split[i]
+      else:
+        feature_ext_idx = i
+    if feature_ext_idx is None:
+      continue # skip image with missing feature extension
+
+    # The image name is a format string which can be passed to load_image_features()
+    # Replace the feature extension with a placeholder and remove the format extension ('exr')
+    image_name = filename_split[0]
+    for i in range(1, len(filename_split)-1):
+      image_name += '%s' if i == feature_ext_idx else ('.' + filename_split[i])
+
+    # Identify the samples per pixel
+    if '_' in group_name:
+      prefix, suffix = group_name.rsplit('_', 1)
       if (suffix.isdecimal() or
-          (suffix.endswith('spp') and suffix[:-3].isdecimal()) or
-          suffix == 'ref' or suffix == 'reference' or
-          suffix == 'gt' or suffix == 'target'):
-        group = prefix
-    image_groups[group].add(image_name)
+          (suffix.lower().endswith('spp') and suffix[:-3].isdecimal()) or
+          suffix.lower() in {'ref', 'reference', 'gt', 'target'}):
+        group_name = prefix
+
+    if frame_str is not None:
+      group_name += '.' + frame_str
+    image_groups[group_name].add(image_name)
 
   # Make sorted image sample (inputs + target) groups
   image_sample_groups = []
@@ -205,8 +232,8 @@ def get_image_sample_groups(dir, input_features, target_features=None):
       input_names, target_name = image_names, None
 
     # Check whether all required features exist
-    if all([image_exists(os.path.join(dir, input_name), input_features) for input_name in input_names]):
-      if target_name and not image_exists(os.path.join(dir, target_name), target_features):
+    if all([image_features_exist(os.path.join(dir, input_name), input_features) for input_name in input_names]):
+      if target_name and not image_features_exist(os.path.join(dir, target_name), target_features):
         target_name = None # discard target due to missing features
 
       # Add sample

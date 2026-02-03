@@ -25,7 +25,7 @@ def main():
     error('cannot compare different features')
 
   # Load metadata for the images if it exists
-  tonemap_exposure = cfg.exposure
+  tonemap_exposure = cfg.exposure if cfg.exposure is not None else 1.
   if os.path.dirname(cfg.input[0]) == os.path.dirname(cfg.input[1]):
     metadata = load_image_metadata(os.path.commonprefix(cfg.input))
     if metadata:
