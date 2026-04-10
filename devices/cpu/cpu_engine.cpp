@@ -63,16 +63,28 @@ OIDN_NAMESPACE_BEGIN
       observer.reset();
   }
 
-  bool CPUEngine::isConvSupported(PostOp postOp)
+  bool CPUEngine::isConvSupported(Fusion fusion)
   {
     if (device->getArch() == CPUArch::AVX512_AMXFP16)
     {
-      return postOp == PostOp::None ||
-             postOp == PostOp::Pool ||
-             postOp == PostOp::Upsample;
+      return fusion == Fusion::None ||
+             fusion == Fusion::UpsampleSrc0 ||
+             fusion == Fusion::PoolDst;
     }
     else
-      return postOp == PostOp::None;
+      return fusion == Fusion::None;
+  }
+
+  bool CPUEngine::isConcatConvSupported(Fusion fusion)
+  {
+    if (device->getArch() == CPUArch::AVX512_AMXFP16)
+    {
+      return fusion == Fusion::None ||
+             fusion == Fusion::UpsampleSrc0 ||
+             fusion == Fusion::PoolDst;
+    }
+    else
+      return false;
   }
 
 #if !defined(OIDN_BNNS)
@@ -84,6 +96,15 @@ OIDN_NAMESPACE_BEGIN
     else
   #endif
       return makeRef<CPUConv>(this, desc);
+  }
+
+  Ref<ConcatConv> CPUEngine::newConcatConv(const ConcatConvDesc& desc)
+  {
+  #if defined(OIDN_ARCH_X64) && !defined(__APPLE__)
+    return makeRef<CPUConcatConvAMX>(this, desc);
+  #else
+    throw std::logic_error("native concat+conv is not supported by the device");
+  #endif
   }
 #endif
 

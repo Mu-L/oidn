@@ -40,6 +40,18 @@ OIDN_NAMESPACE_BEGIN
     mpsBias   = bias->getBuffer() ? toMPSGraphPlaceholder(mpsGraph, biasDesc)
                                   : toMPSGraphConst(mpsGraph, bias);
 
+    MPSGraphTensor* mpsConvSrc = mpsSrc;
+    if (fusion == Fusion::UpsampleSrc0)
+    {
+      mpsConvSrc = [mpsGraph resizeTensor: mpsSrc
+                                     size: @[@(dstDesc.getH()), @(dstDesc.getW())]
+                                     mode: MPSGraphResizeMode::MPSGraphResizeNearest
+                             centerResult: true
+                             alignCorners: false
+                                   layout: MPSGraphTensorNamedDataLayout::MPSGraphTensorNamedDataLayoutNHWC
+                                     name: nil];
+    }
+
     MPSGraphConvolution2DOpDescriptor* mpsConvDesc = [MPSGraphConvolution2DOpDescriptor
       descriptorWithStrideInX: 1
                     strideInY: 1
@@ -50,7 +62,7 @@ OIDN_NAMESPACE_BEGIN
                    dataLayout: MPSGraphTensorNamedDataLayout::MPSGraphTensorNamedDataLayoutNHWC
                 weightsLayout: MPSGraphTensorNamedDataLayout::MPSGraphTensorNamedDataLayoutOIHW];
 
-    mpsDst = [mpsGraph convolution2DWithSourceTensor: mpsSrc
+    mpsDst = [mpsGraph convolution2DWithSourceTensor: mpsConvSrc
                                        weightsTensor: mpsWeight
                                           descriptor: mpsConvDesc
                                                 name: nil];
@@ -65,7 +77,7 @@ OIDN_NAMESPACE_BEGIN
                                    name: nil];
     }
 
-    if (postOp == PostOp::Pool)
+    if (fusion == Fusion::PoolDst)
     {
       MPSGraphPooling2DOpDescriptor* mpsPoolDesc = [MPSGraphPooling2DOpDescriptor
         descriptorWithKernelWidth: 2
@@ -79,18 +91,6 @@ OIDN_NAMESPACE_BEGIN
                                            descriptor: mpsPoolDesc
                                                  name: nil];
     }
-    else if (postOp == PostOp::Upsample)
-    {
-      mpsDst = [mpsGraph resizeTensor: mpsDst
-                                 size: @[@(dstDesc.getH()), @(dstDesc.getW())]
-                                 mode: MPSGraphResizeMode::MPSGraphResizeNearest
-                         centerResult: true
-                         alignCorners: false
-                               layout: MPSGraphTensorNamedDataLayout::MPSGraphTensorNamedDataLayoutNHWC
-                                 name: nil];
-    }
-    else if (postOp != PostOp::None)
-      throw std::invalid_argument("unsupported convolution postop");
   }
 
   void MetalConv::submitKernels(const Ref<CancellationToken>& ct)

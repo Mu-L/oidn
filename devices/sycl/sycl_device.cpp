@@ -232,6 +232,37 @@ OIDN_NAMESPACE_BEGIN
     return SYCLArch::Xe_NoDPAS; // safe fallback
   }
 
+  SYCLArchCodepath SYCLDevice::getArchCodepath(SYCLArch arch)
+  {
+    switch (arch)
+    {
+    case SYCLArch::Xe_NoDPAS:
+    case SYCLArch::XeLP_NoDPAS:
+    case SYCLArch::XeLPG_NoDPAS:
+    case SYCLArch::XeHPC_NoDPAS:
+      return SYCLArchCodepath::XeLP;
+
+    case SYCLArch::Xe:
+    case SYCLArch::XeLPGplus:
+    case SYCLArch::XeHPG:
+      return SYCLArchCodepath::XeHPG;
+
+    case SYCLArch::XeHPC:
+      return SYCLArchCodepath::XeHPC;
+
+    case SYCLArch::Xe2:
+    case SYCLArch::Xe2LPG:
+    case SYCLArch::Xe2HPG:
+    case SYCLArch::Xe3:
+    case SYCLArch::Xe3LPG:
+    case SYCLArch::Xe3pXPC:
+      return SYCLArchCodepath::Xe2;
+
+    default:
+      throw std::logic_error("unsupported architecture");
+    }
+  }
+
   int SYCLDevice::getScore(const sycl::device& syclDevice)
   {
     const SYCLArch arch = getArch(syclDevice);
@@ -342,6 +373,8 @@ OIDN_NAMESPACE_BEGIN
     else
       throw Exception(Error::InvalidArgument, "no SYCL queues specified");
 
+    archCodepath = getArchCodepath(arch);
+
     // Get the SYCL / Level Zero context
     syclContext = syclQueues[0].get_context();
     if (syclContext.get_platform().get_backend() == sycl::backend::ext_oneapi_level_zero)
@@ -407,29 +440,23 @@ OIDN_NAMESPACE_BEGIN
     tensorLayout   = TensorLayout::Chw16c;
     tensorBlockC   = 16;
 
-    switch (arch)
+    switch (archCodepath)
     {
-    case SYCLArch::Xe:
-    case SYCLArch::XeLPGplus:
-    case SYCLArch::XeHPG:
+    case SYCLArchCodepath::XeLP:
+      weightDataType = DataType::Float32;
+      weightLayout   = TensorLayout::OIhw16i16o;
+      break;
+
+    case SYCLArchCodepath::XeHPG:
       weightDataType = DataType::Float16;
       weightLayout   = TensorLayout::OIhw2o8i8o2i;
       break;
 
-    case SYCLArch::XeHPC:
-    case SYCLArch::Xe2:
-    case SYCLArch::Xe2LPG:
-    case SYCLArch::Xe2HPG:
-    case SYCLArch::Xe3:
-    case SYCLArch::Xe3LPG:
-    case SYCLArch::Xe3pXPC:
+    case SYCLArchCodepath::XeHPC:
+    case SYCLArchCodepath::Xe2:
       weightDataType = DataType::Float16;
       weightLayout   = TensorLayout::OIhw8i16o2i;
       break;
-
-    default:
-      weightDataType = DataType::Float32;
-      weightLayout   = TensorLayout::OIhw16i16o;
     }
 
     if (zeContext)

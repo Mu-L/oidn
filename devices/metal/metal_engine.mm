@@ -104,11 +104,11 @@ OIDN_NAMESPACE_BEGIN
       return makeRef<DeviceTensor>(buffer, desc, byteOffset);
   }
 
-  bool MetalEngine::isConvSupported(PostOp postOp)
+  bool MetalEngine::isConvSupported(Fusion fusion)
   {
-    return postOp == PostOp::None ||
-           postOp == PostOp::Pool ||
-           postOp == PostOp::Upsample;
+    return fusion == Fusion::None ||
+           fusion == Fusion::UpsampleSrc0 ||
+           fusion == Fusion::PoolDst;
   }
 
   Ref<Conv> MetalEngine::newConv(const ConvDesc& desc)

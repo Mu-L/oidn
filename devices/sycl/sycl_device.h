@@ -10,7 +10,7 @@ OIDN_NAMESPACE_BEGIN
 
   class SYCLEngine;
 
-  // GPU architecture
+  // GPU architectures
   enum class SYCLArch
   {
     Unknown,
@@ -30,6 +30,15 @@ OIDN_NAMESPACE_BEGIN
     Xe3pXPC,
   };
 
+  // Unique code paths for different GPU architectures
+  enum class SYCLArchCodepath
+  {
+    XeLP,
+    XeHPG,
+    XeHPC,
+    Xe2,
+  };
+
   class SYCLPhysicalDevice : public PhysicalDevice
   {
   public:
@@ -44,6 +53,7 @@ OIDN_NAMESPACE_BEGIN
     static std::vector<Ref<PhysicalDevice>> getPhysicalDevices();
     static bool isSupported(const sycl::device& syclDevice);
     static SYCLArch getArch(const sycl::device& syclDevice);
+    static SYCLArchCodepath getArchCodepath(SYCLArch arch);
     static int getScore(const sycl::device& syclDevice);
 
     SYCLDevice(const std::vector<sycl::queue>& syclQueues);
@@ -69,6 +79,7 @@ OIDN_NAMESPACE_BEGIN
     void getDoneEvent(sycl::event& event) override;
 
     SYCLArch getArch() const { return arch; }
+    SYCLArchCodepath getArchCodepath() const { return archCodepath; }
 
   private:
     void preinit();
@@ -79,6 +90,7 @@ OIDN_NAMESPACE_BEGIN
     sycl::context syclContext;
     ze_context_handle_t zeContext = nullptr; // Level Zero context
     SYCLArch arch = SYCLArch::Unknown;
+    SYCLArchCodepath archCodepath = SYCLArchCodepath::XeLP;
     int numSubdevices = 0; // autodetect by default
 
     // Used only for initialization

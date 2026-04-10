@@ -49,7 +49,7 @@ OIDN_NAMESPACE_BEGIN
     Ref<Tensor> newTensor(const Ref<Buffer>& buffer, const TensorDesc& desc, size_t byteOffset) override;
 
     // Ops
-    bool isConvSupported(PostOp postOp) override;
+    bool isConvSupported(Fusion fusion) override;
     Ref<Conv> newConv(const ConvDesc& desc) override;
     Ref<Pool> newPool(const PoolDesc& desc) override;
     Ref<Upsample> newUpsample(const UpsampleDesc& desc) override;

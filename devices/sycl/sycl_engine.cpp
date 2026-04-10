@@ -36,43 +36,48 @@ OIDN_NAMESPACE_BEGIN
     return makeRef<SYCLExternalBuffer>(this, handleType, handle, name, byteSize);
   }
 
-  bool SYCLEngine::isConvSupported(PostOp postOp)
+  bool SYCLEngine::isConvSupported(Fusion fusion)
   {
-    return postOp == PostOp::None ||
-           postOp == PostOp::Pool ||
-           postOp == PostOp::Upsample;
+    return fusion == Fusion::None ||
+           fusion == Fusion::PoolDst;
+  }
+
+  bool SYCLEngine::isConcatConvSupported(Fusion fusion)
+  {
+    return fusion == Fusion::UpsampleSrc0;
   }
 
   Ref<Conv> SYCLEngine::newConv(const ConvDesc& desc)
   {
-    switch (device->getArch())
+    switch (device->getArchCodepath())
     {
-    case SYCLArch::Xe_NoDPAS:
-    case SYCLArch::XeLP_NoDPAS:
-    case SYCLArch::XeLPG_NoDPAS:
-    case SYCLArch::XeHPC_NoDPAS:
+    case SYCLArchCodepath::XeLP:
       return xelp::newSYCLConv(this, desc);
-
-    case SYCLArch::Xe:
-    case SYCLArch::XeLPGplus:
-    case SYCLArch::XeHPG:
+    case SYCLArchCodepath::XeHPG:
       return xehpg::newSYCLConv(this, desc);
-
   #if defined(__linux__)
-    case SYCLArch::XeHPC:
+    case SYCLArchCodepath::XeHPC:
       return xehpc::newSYCLConv(this, desc);
   #endif
-
-    case SYCLArch::Xe2:
-    case SYCLArch::Xe2LPG:
-    case SYCLArch::Xe2HPG:
-    case SYCLArch::Xe3:
-    case SYCLArch::Xe3LPG:
-    case SYCLArch::Xe3pXPC:
+    case SYCLArchCodepath::Xe2:
       return xe2::newSYCLConv(this, desc);
+    }
+  }
 
-    default:
-      throw std::logic_error("unsupported architecture");
+  Ref<ConcatConv> SYCLEngine::newConcatConv(const ConcatConvDesc& desc)
+  {
+    switch (device->getArchCodepath())
+    {
+    case SYCLArchCodepath::XeLP:
+      return xelp::newSYCLConcatConv(this, desc);
+    case SYCLArchCodepath::XeHPG:
+      return xehpg::newSYCLConcatConv(this, desc);
+  #if defined(__linux__)
+    case SYCLArchCodepath::XeHPC:
+      return xehpc::newSYCLConcatConv(this, desc);
+  #endif
+    case SYCLArchCodepath::Xe2:
+      return xe2::newSYCLConcatConv(this, desc);
     }
   }
 

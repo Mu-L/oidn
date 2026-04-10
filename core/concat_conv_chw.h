@@ -19,17 +19,16 @@ OIDN_NAMESPACE_BEGIN
     size_t getScratchByteSize() override { return conv->getScratchByteSize(); }
     void setScratch(const Ref<Buffer>& scratch) override { conv->setScratch(scratch); }
 
-    void setWeight(const Ref<Tensor>& weight) { conv->setWeight(weight); }
-
     void finalize() override { conv->finalize(); }
     void submitKernels(const Ref<CancellationToken>& ct) override { conv->submitKernels(ct); }
 
   private:
     void updateSrc() override;
+    void updateWeight() override { conv->setWeight(weight); }
     void updateBias() override { conv->setBias(bias); }
     void updateDst() override { conv->setDst(dst); }
 
-    TensorDesc srcDesc;         // pre-concatenated source
+    TensorDesc srcDesc; // pre-concatenated source
     Ref<Conv> conv;
   };
 

@@ -4,3 +4,4 @@
 #define OIDN_ARCH_XEHPG
 
 #include "sycl_conv_xe.h"
+#include "sycl_concat_conv_xe.h"

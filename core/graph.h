@@ -39,12 +39,22 @@ OIDN_NAMESPACE_BEGIN
     Ref<Op> addConv(const std::string& name,
                     const Ref<Op>& srcOp,
                     Activation activation,
-                    PostOp postOp = PostOp::None);
+                    Fusion fusion = Fusion::None);
+
+    Ref<Op> addConvPool(const std::string& name,
+                        const Ref<Op>& srcOp,
+                        Activation activation);
 
     Ref<Op> addConcatConv(const std::string& name,
+                          const Ref<Op>& src0Op,
                           const Ref<Op>& src1Op,
-                          const Ref<Op>& src2Op,
-                          Activation activation);
+                          Activation activation,
+                          Fusion fusion = Fusion::None);
+
+    Ref<Op> addUpsampleConcatConv(const std::string& name,
+                                  const Ref<Op>& src0Op,
+                                  const Ref<Op>& src1Op,
+                                  Activation activation);
 
     Ref<Op> addPool(const std::string& name,
                     const Ref<Op>& srcOp);

@@ -15,11 +15,11 @@ OIDN_NAMESPACE_BEGIN
     ReLU
   };
 
-  enum class PostOp
+  enum class Fusion
   {
     None,
-    Pool,
-    Upsample
+    UpsampleSrc0, // upsample first source
+    PoolDst,      // pool destination
   };
 
   // Convolution descriptor
@@ -29,7 +29,7 @@ OIDN_NAMESPACE_BEGIN
     TensorDesc weightDesc;
     TensorDesc biasDesc;
     Activation activation;
-    PostOp postOp;
+    Fusion fusion;
     bool fastMath; // prefer performance over accuracy
   };
 

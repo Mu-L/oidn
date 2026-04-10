@@ -15,12 +15,15 @@ struct AMXTileConfig
 
 struct CPUConvAMXKernel
 {
-  uniform TensorAccessor3D_ChwBc src;
+  uniform TensorAccessor3D_ChwBc src[2]; // one or two source tensors (optional concatenation)
   uniform TensorAccessor4D_OIhwPoQiRoSi weight;
   uniform TensorAccessor1D bias;
   uniform TensorAccessor3D_ChwBc dst;
+  uniform int numSrcs; // number of source tensors to concatenate
+  uniform int OH; // convolution output height without post-op
+  uniform int OW; // convolution output width without post-op
   uniform bool relu;
-  uniform PostOp postOp;
+  uniform Fusion fusion;
 
   uniform AMXTileConfig tileConfig; // set by CPUConvAMXKernel_init
 };
@@ -59,25 +62,44 @@ inline unmasked void storeOCB(uniform int8* uniform ptr, varying T ocb0, varying
   streaming_store((uniform T* uniform)(ptr + sizeof(varying T)), ocb1);
 }
 
-// Copy a block of input data (including borders needed for the kernel) from the source tensor
+// Prefetches a block of input data (including borders needed for the kernel) from a source
+// tensor into L1 cache
+inline unmasked void CPUConvAMXKernel_prefetchInputBlock(
+                       const uniform TensorAccessor3D_ChwBc& src,
+                       const uniform int8* uniform srcPtr)
+{
+  // Iterate over the input block height
+  #pragma unroll
+  for (uniform int bih = 0; bih < blockIH; ++bih)
+  {
+    // Iterate over the input block width
+    #pragma unroll
+    for (uniform int biw = 0; biw < blockIW; ++biw)
+      prefetch_l1(srcPtr + biw * wByteStride);
+
+    srcPtr += src.hByteStride; // next row in the source tensor
+  }
+}
+
+// Copy a block of input data (including borders needed for the kernel) from a source tensor
 // to a temporary buffer, handling zero-padding as needed
 inline unmasked void CPUConvAMXKernel_copyInputBlock(
-                       const uniform CPUConvAMXKernel* uniform self,
+                       const uniform TensorAccessor3D_ChwBc& src,
                        uniform int ih, uniform int iw,
                        const uniform int8* uniform srcPtr,
                        varying int* uniform tempPtr)
 {
   // Iterate over the input block height
   #pragma unroll
-  for (uniform int bih = 0; bih < blockOH + KH - 1; ++bih)
+  for (uniform int bih = 0; bih < blockIH; ++bih)
   {
     // Iterate over the input block width
     #pragma unroll
     for (uniform int biw = 0; biw < blockIW; ++biw)
     {
       // Bounds check
-      if (ih - PH + bih >= 0 && ih - PH + bih < self->src.H &&
-          iw - PW + biw >= 0 && iw - PW + biw < self->src.W)
+      if (ih + bih >= 0 && ih + bih < src.H &&
+          iw + biw >= 0 && iw + biw < src.W)
         *tempPtr = *((const varying int* uniform)(srcPtr + biw * wByteStride));
       else
         *tempPtr = 0; // zero-padding
@@ -85,27 +107,62 @@ inline unmasked void CPUConvAMXKernel_copyInputBlock(
       ++tempPtr;
     }
 
-    srcPtr += self->src.hByteStride; // next row in the source tensor
+    srcPtr += src.hByteStride; // next row in the source tensor
   }
 }
 
-// Prefetches a block of input data (including borders needed for the kernel) from the source
-// tensor into L1 cache
-inline unmasked void CPUConvAMXKernel_prefetchInputBlock(
-                       const uniform CPUConvAMXKernel* uniform self,
-                       uniform int ih, uniform int iw,
-                       const uniform int8* uniform srcPtr)
+// Copy a block of input data (including borders needed for the kernel) from a virtually
+// 2x upsampled source tensor to a temporary buffer, handling zero-padding as needed
+// Assumes: ih%2 == PH%2 and iw%2 == PW%2
+inline unmasked void CPUConvAMXKernel_upsampleInputBlock(
+                       const uniform TensorAccessor3D_ChwBc& src,
+                       uniform int ic, uniform int ih, uniform int iw,
+                       const uniform int8* uniform srcPtr,
+                       varying int* uniform tempPtr)
 {
   // Iterate over the input block height
   #pragma unroll
-  for (uniform int bih = 0; bih < blockOH + KH - 1; ++bih)
+  for (uniform int bih = 0; bih < blockIH; ++bih)
   {
     // Iterate over the input block width
     #pragma unroll
     for (uniform int biw = 0; biw < blockIW; ++biw)
-      prefetch_l1(srcPtr + biw * wByteStride);
+    {
+      // Bounds check
+      if (ih + bih >= 0 && ih + bih < src.H * 2 &&
+          iw + biw >= 0 && iw + biw < src.W * 2)
+        *tempPtr = *((const varying int* uniform)(srcPtr + ((biw + (PW & 1)) >> 1) * wByteStride));
+      else
+        *tempPtr = 0; // zero-padding
 
-    srcPtr += self->src.hByteStride; // next row in the source tensor
+      ++tempPtr;
+    }
+
+    if ((bih + PH) & 1)
+      srcPtr += src.hByteStride; // next row in the source tensor
+  }
+}
+
+// Copy a block of input data (including borders needed for the kernel) from a virtually
+// 2x upsampled source tensor to a temporary buffer, assuming that no padding is needed
+// Assumes: ih%2 == PH%2 and iw%2 == PW%2
+inline unmasked void CPUConvAMXKernel_upsampleInputInnerBlock(
+                       const uniform TensorAccessor3D_ChwBc& src,
+                       uniform int ic, uniform int ih, uniform int iw,
+                       const uniform int8* uniform srcPtr,
+                       varying int* uniform tempPtr)
+{
+  // Iterate over the input block height
+  #pragma unroll
+  for (uniform int bih = 0; bih < blockIH; ++bih)
+  {
+    // Iterate over the input block width
+    #pragma unroll
+    for (uniform int biw = 0; biw < blockIW; ++biw)
+      *tempPtr++ = *((const varying int* uniform)(srcPtr + ((biw + (PW & 1)) >> 1) * wByteStride));
+
+    if ((bih + PH) & 1)
+       srcPtr += src.hByteStride;
   }
 }
 
@@ -135,85 +192,113 @@ inline unmasked void CPUConvAMXKernel_computeBlock_f16(
 
   const uniform int8* uniform weightPtr = Tensor_getPtr<float16>(self->weight, oc);
 
-  // Check whether the input block is an inner block which does not require padding/copying
-  const uniform bool isInnerBlock = (oh - PH >= 0) && (oh - PH + blockIH <= self->src.H) &&
-                                    (ow - PW >= 0) && (ow - PW + blockIW <= self->src.W);
-
-  // Iterate over the input channel blocks
-  for (uniform int ic = 0; ic < self->src.C; ic += blockIC)
+  // Iterate over the source tensors
+  for (uniform int i = 0; i < self->numSrcs; ++i)
   {
-    // Get a pointer to the input block in the source tensor
-    // Tensor_get doesn't work with negative indices, so we need to adjust the pointer
-    const uniform int8* uniform srcPtr = Tensor_getPtr<float16>(self->src, ic, oh, ow);
-    srcPtr -= PH * self->src.hByteStride; // adjust for top padding
-    srcPtr -= PW * wByteStride;           // adjust for left padding
+    const uniform TensorAccessor3D_ChwBc& src = self->src[i];
 
-    // Prefetch or copy+pad the input block, depending on whether it is an inner block
-    uniform int8* uniform inPtr;
-    uniform size_t inRowByteStride;
-
-    if (isInnerBlock)
+    // Iterate over the input channel blocks
+    for (uniform int ic = 0; ic < src.C; ic += blockIC)
     {
-      // No padding needed, just prefetch from the source tensor (fast)
-      CPUConvAMXKernel_prefetchInputBlock(self, oh, ow, srcPtr);
-      inPtr = srcPtr;
-      inRowByteStride = self->src.hByteStride;
-    }
-    else
-    {
-      // Padding needed, copy to the temporary buffer (slow)
-      CPUConvAMXKernel_copyInputBlock(self, oh, ow, srcPtr, inBuffer);
-      inPtr = (uniform int8* uniform)&inBuffer;
-      inRowByteStride = blockIW * wByteStride;
-    }
+      uniform int8* uniform inPtr;
+      uniform size_t inRowByteStride;
 
-    // Iterate over the kernel height
-    #pragma unroll
-    for (uniform int kh = 0; kh < KH; ++kh)
-    {
-      const uniform int8* uniform inRowPtr = inPtr; // current input block row
+      const uniform int ih = oh - PH;
+      const uniform int iw = ow - PW;
 
-      // Iterate over the kernel width
-      #pragma unroll
-      for (uniform int kw = 0; kw < KW; ++kw)
+      if (i == 0 && self->fusion == Fusion_UpsampleSrc0)
       {
-        const uniform bool isLast = (kh == KH - 1) && (kw == KW - 1);
+        // Upsample by 2x2 nearest-neighbor
+        // Get a pointer to the input block in the source tensor
+        // Tensor_get doesn't work with negative indices, so we need to adjust the pointer
+        const uniform int8* uniform srcPtr = Tensor_getPtr<float16>(src, ic, oh >> 1, ow >> 1);
+        srcPtr -= ((PH + 1) >> 1) * src.hByteStride; // adjust for top padding
+        srcPtr -= ((PW + 1) >> 1) * wByteStride;     // adjust for left padding
 
-        // Load weights for output channel block 0
-        amx_tile_load(tmm_weight, weightPtr, 64);
+        const uniform bool isInnerBlock = (ih >= 0) && (ih + blockIH <= src.H * 2) &&
+                                          (iw >= 0) && (iw + blockIW <= src.W * 2);
+        if (isInnerBlock)
+          CPUConvAMXKernel_upsampleInputInnerBlock(src, ic, ih, iw, srcPtr, inBuffer);
+        else
+          CPUConvAMXKernel_upsampleInputBlock(src, ic, ih, iw, srcPtr, inBuffer);
+        inPtr = (uniform int8* uniform)&inBuffer;
+        inRowByteStride = blockIW * wByteStride;
+      }
+      else
+      {
+        // Get a pointer to the input block in the source tensor
+        // Tensor_get doesn't work with negative indices, so we need to adjust the pointer
+        const uniform int8* uniform srcPtr = Tensor_getPtr<float16>(src, ic, oh, ow);
+        srcPtr -= PH * src.hByteStride; // adjust for top padding
+        srcPtr -= PW * wByteStride;     // adjust for left padding
 
-        // Load input block row 0
-        amx_tile_load(tmm_inRow0, inRowPtr, 64);
-        // Multiply-accumulate block row 0, output channel block 0
-        amx_dpfp16ps(tmm_accumRow0_ocb0, tmm_inRow0, tmm_weight);
-        if (isLast)
-          amx_tile_store(tmm_accumRow0_ocb0, (uniform int8* uniform)&accumRow0_ocb0, 64);
-
-        // Load input block row 1
-        amx_tile_load(tmm_inRow1, inRowPtr + inRowByteStride, 64);
-        // Multiply-accumulate block row 1, output channel block 0
-        amx_dpfp16ps(tmm_accumRow1_ocb0, tmm_inRow1, tmm_weight);
-        if (isLast)
-          amx_tile_store(tmm_accumRow1_ocb0, (uniform int8* uniform)&accumRow1_ocb0, 64);
-
-        // Load weights for output channel block 1
-        amx_tile_load(tmm_weight, weightPtr + 1024, 64);
-
-        // Multiply-accumulate block row 0, output channel block 1
-        amx_dpfp16ps(tmm_accumRow0_ocb1, tmm_inRow0, tmm_weight);
-        if (isLast)
-          amx_tile_store(tmm_accumRow0_ocb1, (uniform int8* uniform)&accumRow0_ocb1, 64);
-
-        // Multiply-accumulate block row 1, output channel block 1
-        amx_dpfp16ps(tmm_accumRow1_ocb1, tmm_inRow1, tmm_weight);
-        if (isLast)
-          amx_tile_store(tmm_accumRow1_ocb1, (uniform int8* uniform)&accumRow1_ocb1, 64);
-
-        inRowPtr  += wByteStride; // shift input block by one column
-        weightPtr += 2048;        // next pair of weight matrix tiles
+        // Prefetch or copy+pad the input block, depending on whether it is an inner block
+        const uniform bool isInnerBlock = (ih >= 0) && (ih + blockIH <= src.H) &&
+                                          (iw >= 0) && (iw + blockIW <= src.W);
+        if (isInnerBlock)
+        {
+          // No padding needed, just prefetch from the source tensor (fast)
+          CPUConvAMXKernel_prefetchInputBlock(src, srcPtr);
+          inPtr = srcPtr;
+          inRowByteStride = src.hByteStride;
+        }
+        else
+        {
+          // Padding needed, copy to the temporary buffer (slow)
+          CPUConvAMXKernel_copyInputBlock(src, ih, iw, srcPtr, inBuffer);
+          inPtr = (uniform int8* uniform)&inBuffer;
+          inRowByteStride = blockIW * wByteStride;
+        }
       }
 
-      inPtr += inRowByteStride; // shift input block by one row
+      // Iterate over the kernel height
+      #pragma unroll
+      for (uniform int kh = 0; kh < KH; ++kh)
+      {
+        const uniform int8* uniform inRowPtr = inPtr; // current input block row
+
+        // Iterate over the kernel width
+        #pragma unroll
+        for (uniform int kw = 0; kw < KW; ++kw)
+        {
+          const uniform bool isLast = (kh == KH - 1) && (kw == KW - 1);
+
+          // Load weights for output channel block 0
+          amx_tile_load(tmm_weight, weightPtr, 64);
+
+          // Load input block row 0
+          amx_tile_load(tmm_inRow0, inRowPtr, 64);
+          // Multiply-accumulate block row 0, output channel block 0
+          amx_dpfp16ps(tmm_accumRow0_ocb0, tmm_inRow0, tmm_weight);
+          if (isLast)
+            amx_tile_store(tmm_accumRow0_ocb0, (uniform int8* uniform)&accumRow0_ocb0, 64);
+
+          // Load input block row 1
+          amx_tile_load(tmm_inRow1, inRowPtr + inRowByteStride, 64);
+          // Multiply-accumulate block row 1, output channel block 0
+          amx_dpfp16ps(tmm_accumRow1_ocb0, tmm_inRow1, tmm_weight);
+          if (isLast)
+            amx_tile_store(tmm_accumRow1_ocb0, (uniform int8* uniform)&accumRow1_ocb0, 64);
+
+          // Load weights for output channel block 1
+          amx_tile_load(tmm_weight, weightPtr + 1024, 64);
+
+          // Multiply-accumulate block row 0, output channel block 1
+          amx_dpfp16ps(tmm_accumRow0_ocb1, tmm_inRow0, tmm_weight);
+          if (isLast)
+            amx_tile_store(tmm_accumRow0_ocb1, (uniform int8* uniform)&accumRow0_ocb1, 64);
+
+          // Multiply-accumulate block row 1, output channel block 1
+          amx_dpfp16ps(tmm_accumRow1_ocb1, tmm_inRow1, tmm_weight);
+          if (isLast)
+            amx_tile_store(tmm_accumRow1_ocb1, (uniform int8* uniform)&accumRow1_ocb1, 64);
+
+          inRowPtr  += wByteStride; // shift input block by one column
+          weightPtr += 2048;        // next pair of weight matrix tiles
+        }
+
+        inPtr += inRowByteStride; // shift input block by one row
+      }
     }
   }
 
@@ -224,46 +309,12 @@ inline unmasked void CPUConvAMXKernel_computeBlock_f16(
   const varying float bias_ocb1 = biasPtr[1];
 
   // Compute and store the final results to the destination tensor
-  const uniform int validBlockOW = min(blockOW, self->src.W - ow); // check width bounds
+  const uniform int validBlockOW = min(blockOW, self->OW - ow); // check width bounds
 
-  if (self->postOp == PostOp_None)
-  {
-    uniform int8* uniform dstRow0 = Tensor_getPtr<float16>(self->dst, oc, oh, ow);
-    uniform int8* uniform dstRow1 = dstRow0 + self->dst.hByteStride;
-
-    for (uniform int bow = 0; bow < validBlockOW; ++bow)
-    {
-      // Load the accumulated values
-      varying float x0_ocb0 = accumRow0_ocb0[bow];
-      varying float x0_ocb1 = accumRow0_ocb1[bow];
-      varying float x1_ocb0 = accumRow1_ocb0[bow];
-      varying float x1_ocb1 = accumRow1_ocb1[bow];
-
-      // Add the bias
-      x0_ocb0 += bias_ocb0;  x0_ocb1 += bias_ocb1;
-      x1_ocb0 += bias_ocb0;  x1_ocb1 += bias_ocb1;
-
-      // Apply ReLU activation
-      if (self->relu)
-      {
-        x0_ocb0 = max(x0_ocb0, 0);  x0_ocb1 = max(x0_ocb1, 0);
-        x1_ocb0 = max(x1_ocb0, 0);  x1_ocb1 = max(x1_ocb1, 0);
-      }
-
-      // Convert the result and store to the destination tensor
-      storeOCB(dstRow0, (float16)x0_ocb0, (float16)x0_ocb1);
-      if (oh + 1 < self->src.H) // check height bounds
-        storeOCB(dstRow1, (float16)x1_ocb0, (float16)x1_ocb1);
-
-      // Next destination column
-      dstRow0 += wByteStride;
-      dstRow1 += wByteStride;
-    }
-  }
-  else if (self->postOp == PostOp_Pool)
+  if (self->fusion == Fusion_PoolDst)
   {
     // Downsample by 2x2 max pooling
-    uniform int8* uniform dstRow = Tensor_getPtr<float16>(self->dst, oc, oh / 2, ow / 2);
+    uniform int8* uniform dstRow = Tensor_getPtr<float16>(self->dst, oc, oh >> 1, ow >> 1);
 
     for (uniform int bow = 0; bow < validBlockOW; bow += 2)
     {
@@ -303,13 +354,10 @@ inline unmasked void CPUConvAMXKernel_computeBlock_f16(
       dstRow += wByteStride;
     }
   }
-  else if (self->postOp == PostOp_Upsample)
+  else
   {
-    // Upsample by 2x2 with nearest neighbor
-    uniform int8* uniform dstRow0 = Tensor_getPtr<float16>(self->dst, oc, oh * 2, ow * 2);
+    uniform int8* uniform dstRow0 = Tensor_getPtr<float16>(self->dst, oc, oh, ow);
     uniform int8* uniform dstRow1 = dstRow0 + self->dst.hByteStride;
-    uniform int8* uniform dstRow2 = dstRow1 + self->dst.hByteStride;
-    uniform int8* uniform dstRow3 = dstRow2 + self->dst.hByteStride;
 
     for (uniform int bow = 0; bow < validBlockOW; ++bow)
     {
@@ -330,24 +378,14 @@ inline unmasked void CPUConvAMXKernel_computeBlock_f16(
         x1_ocb0 = max(x1_ocb0, 0);  x1_ocb1 = max(x1_ocb1, 0);
       }
 
-      // Convert the result and store to the destination tensor 2x2 times
-      storeOCB(dstRow0,               (float16)x0_ocb0, (float16)x0_ocb1);
-      storeOCB(dstRow0 + wByteStride, (float16)x0_ocb0, (float16)x0_ocb1);
-      storeOCB(dstRow1,               (float16)x0_ocb0, (float16)x0_ocb1);
-      storeOCB(dstRow1 + wByteStride, (float16)x0_ocb0, (float16)x0_ocb1);
-      if (oh + 1 < self->src.H) // check height bounds before upsampling
-      {
-        storeOCB(dstRow2,               (float16)x1_ocb0, (float16)x1_ocb1);
-        storeOCB(dstRow2 + wByteStride, (float16)x1_ocb0, (float16)x1_ocb1);
-        storeOCB(dstRow3,               (float16)x1_ocb0, (float16)x1_ocb1);
-        storeOCB(dstRow3 + wByteStride, (float16)x1_ocb0, (float16)x1_ocb1);
-      }
+      // Convert the result and store to the destination tensor
+      storeOCB(dstRow0, (float16)x0_ocb0, (float16)x0_ocb1);
+      if (oh + 1 < self->OH) // check height bounds
+        storeOCB(dstRow1, (float16)x1_ocb0, (float16)x1_ocb1);
 
-      // Advance by 2 destination columns (due to 2x upsampling)
-      dstRow0 += 2*wByteStride;
-      dstRow1 += 2*wByteStride;
-      dstRow2 += 2*wByteStride;
-      dstRow3 += 2*wByteStride;
+      // Next destination column
+      dstRow0 += wByteStride;
+      dstRow1 += wByteStride;
     }
   }
 }

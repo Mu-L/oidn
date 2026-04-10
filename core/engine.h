@@ -20,8 +20,8 @@ OIDN_NAMESPACE_BEGIN
   struct InputProcessDesc;
   struct OutputProcessDesc;
 
-  enum class PostOp;
   class Conv;
+  enum class Fusion;
   class ConcatConv;
   class Pool;
   class Upsample;
@@ -65,8 +65,10 @@ OIDN_NAMESPACE_BEGIN
     virtual Ref<Tensor> newTensor(const Ref<Buffer>& buffer, const TensorDesc& desc, size_t byteOffset = 0);
 
     // Ops
-    virtual bool isConvSupported(PostOp postOp);
+    virtual bool isConvSupported(Fusion fusion);
+    virtual bool isConcatConvSupported(Fusion fusion);
     virtual Ref<Conv> newConv(const ConvDesc& desc) = 0;
+    virtual Ref<ConcatConv> newConcatConv(const ConcatConvDesc& desc);
     virtual Ref<Pool> newPool(const PoolDesc& desc) = 0;
     virtual Ref<Upsample> newUpsample(const UpsampleDesc& desc) = 0;
     virtual Ref<Autoexposure> newAutoexposure(const ImageDesc& srcDesc) = 0;

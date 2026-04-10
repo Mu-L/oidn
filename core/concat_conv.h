@@ -10,23 +10,24 @@ OIDN_NAMESPACE_BEGIN
   // Concatenation + convolution descriptor
   struct ConcatConvDesc
   {
+    TensorDesc src0Desc;
     TensorDesc src1Desc;
-    TensorDesc src2Desc;
     TensorDesc weightDesc;
     TensorDesc biasDesc;
     Activation activation;
+    Fusion fusion;
     bool fastMath; // prefer performance over accuracy
   };
 
-  class ConcatConv : public BaseOp, protected ConcatConvDesc
+  class ConcatConvBase : public BaseOp, protected ConcatConvDesc
   {
   public:
-    ConcatConv(const ConcatConvDesc& desc);
+    ConcatConvBase(const ConcatConvDesc& desc);
 
     TensorDesc getDstDesc() const { return dstDesc; }
     Ref<Tensor> getDst() const { return dst; }
 
-    void setSrc(const Ref<Tensor>& src1, const Ref<Tensor>& src2);
+    void setSrc(const Ref<Tensor>& src0, const Ref<Tensor>& src1);
     void setBias(const Ref<Tensor>& bias);
     void setDst(const Ref<Tensor>& dst);
 
@@ -37,10 +38,24 @@ OIDN_NAMESPACE_BEGIN
 
     TensorDesc dstDesc;
 
+    Ref<Tensor> src0;
     Ref<Tensor> src1;
-    Ref<Tensor> src2;
     Ref<Tensor> bias;
     Ref<Tensor> dst;
+  };
+
+  class ConcatConv : public ConcatConvBase
+  {
+  public:
+    ConcatConv(const ConcatConvDesc& desc) : ConcatConvBase(desc) {}
+
+    void setWeight(const Ref<Tensor>& weight);
+
+  protected:
+    virtual void updateWeight() {}
+
+  protected:
+    Ref<Tensor> weight;
   };
 
 OIDN_NAMESPACE_END

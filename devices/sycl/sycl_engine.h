@@ -34,8 +34,10 @@ OIDN_NAMESPACE_BEGIN
                                   void* handle, const void* name, size_t byteSize) override;
 
     // Ops
-    bool isConvSupported(PostOp postOp) override;
+    bool isConvSupported(Fusion fusion) override;
+    bool isConcatConvSupported(Fusion fusion) override;
     Ref<Conv> newConv(const ConvDesc& desc) override;
+    Ref<ConcatConv> newConcatConv(const ConcatConvDesc& desc) override;
     Ref<Pool> newPool(const PoolDesc& desc) override;
     Ref<Upsample> newUpsample(const UpsampleDesc& desc) override;
     Ref<Autoexposure> newAutoexposure(const ImageDesc& srcDesc) override;

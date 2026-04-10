@@ -16,24 +16,24 @@ OIDN_NAMESPACE_BEGIN
       throw std::invalid_argument("invalid convolution weight shape");
 
     TensorDims dstDims;
-    switch (postOp)
+    switch (fusion)
     {
-    case PostOp::None:
+    case Fusion::None:
       dstDims = {weightDesc.getO(), srcDesc.getH(), srcDesc.getW()};
       break;
 
-    case PostOp::Pool:
+    case Fusion::UpsampleSrc0:
+      dstDims = {weightDesc.getO(), srcDesc.getH() * 2, srcDesc.getW() * 2};
+      break;
+
+    case Fusion::PoolDst:
       if (srcDesc.getH() % 2 != 0 || srcDesc.getW() % 2 != 0)
         throw std::invalid_argument("invalid pooling source shape");
       dstDims = {weightDesc.getO(), srcDesc.getH() / 2, srcDesc.getW() / 2};
       break;
 
-    case PostOp::Upsample:
-      dstDims = {weightDesc.getO(), srcDesc.getH() * 2, srcDesc.getW() * 2};
-      break;
-
     default:
-      throw std::invalid_argument("unsupported convolution postop");
+      throw std::invalid_argument("unsupported convolution fusion");
     }
 
     TensorDims dstPaddedDims = dstDims;

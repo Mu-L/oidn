@@ -5,6 +5,19 @@
 
 #include "common/platform.h"
 
+#if defined(OIDN_ARCH_XELP)
+#define OIDN_ARCH_XE_NAMESPACE xelp
+#elif defined(OIDN_ARCH_XEHPG)
+#define OIDN_ARCH_XE_NAMESPACE xehpg
+#elif defined(OIDN_ARCH_XEHPC)
+#define OIDN_ARCH_XE_NAMESPACE xehpc
+#elif defined(OIDN_ARCH_XE2)
+#define OIDN_ARCH_XE_NAMESPACE xe2
+#endif
+
+#define OIDN_ARCH_XE_NAMESPACE_BEGIN namespace OIDN_ARCH_XE_NAMESPACE {
+#define OIDN_ARCH_XE_NAMESPACE_END }
+
 OIDN_NAMESPACE_BEGIN
 
   using namespace esimd;

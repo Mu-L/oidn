@@ -469,27 +469,27 @@ OIDN_NAMESPACE_BEGIN
   {
     auto x = graph->addConv("enc_conv0", inputProcess, Activation::ReLU);
 
-    auto pool1 = x = graph->addConv("enc_conv1", x, Activation::ReLU, PostOp::Pool);
+    auto pool1 = x = graph->addConvPool("enc_conv1", x, Activation::ReLU);
 
-    auto pool2 = x = graph->addConv("enc_conv2", x, Activation::ReLU, PostOp::Pool);
+    auto pool2 = x = graph->addConvPool("enc_conv2", x, Activation::ReLU);
 
-    auto pool3 = x = graph->addConv("enc_conv3", x, Activation::ReLU, PostOp::Pool);
+    auto pool3 = x = graph->addConvPool("enc_conv3", x, Activation::ReLU);
 
-    auto pool4 = x = graph->addConv("enc_conv4", x, Activation::ReLU, PostOp::Pool);
+    auto pool4 = x = graph->addConvPool("enc_conv4", x, Activation::ReLU);
 
     x = graph->addConv("enc_conv5a", pool4, Activation::ReLU);
-    x = graph->addConv("enc_conv5b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addConv("enc_conv5b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv4a", x, pool3, Activation::ReLU);
-    x = graph->addConv("dec_conv4b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addUpsampleConcatConv("dec_conv4a", x, pool3, Activation::ReLU);
+    x = graph->addConv("dec_conv4b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv3a", x, pool2, Activation::ReLU);
-    x = graph->addConv("dec_conv3b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addUpsampleConcatConv("dec_conv3a", x, pool2, Activation::ReLU);
+    x = graph->addConv("dec_conv3b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv2a", x, pool1, Activation::ReLU);
-    x = graph->addConv("dec_conv2b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addUpsampleConcatConv("dec_conv2a", x, pool1, Activation::ReLU);
+    x = graph->addConv("dec_conv2b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv1a", x, inputProcess, Activation::ReLU);
+    x = graph->addUpsampleConcatConv("dec_conv1a", x, inputProcess, Activation::ReLU);
     x = graph->addConv("dec_conv1b", x, Activation::ReLU);
 
     x = graph->addConv("dec_conv0", x, Activation::ReLU);
@@ -500,30 +500,30 @@ OIDN_NAMESPACE_BEGIN
   Ref<Op> UNetFilter::addUNetLarge(const Ref<Graph>& graph, const Ref<Op>& inputProcess)
   {
     auto x = graph->addConv("enc_conv1a", inputProcess, Activation::ReLU);
-    auto pool1 = x = graph->addConv("enc_conv1b", x, Activation::ReLU, PostOp::Pool);
+    auto pool1 = x = graph->addConvPool("enc_conv1b", x, Activation::ReLU);
 
     x = graph->addConv("enc_conv2a", x, Activation::ReLU);
-    auto pool2 = x = graph->addConv("enc_conv2b", x, Activation::ReLU, PostOp::Pool);
+    auto pool2 = x = graph->addConvPool("enc_conv2b", x, Activation::ReLU);
 
     x = graph->addConv("enc_conv3a", x, Activation::ReLU);
-    auto pool3 = x = graph->addConv("enc_conv3b", x, Activation::ReLU, PostOp::Pool);
+    auto pool3 = x = graph->addConvPool("enc_conv3b", x, Activation::ReLU);
 
     x = graph->addConv("enc_conv4a", x, Activation::ReLU);
-    auto pool4 = x = graph->addConv("enc_conv4b", x, Activation::ReLU, PostOp::Pool);
+    auto pool4 = x = graph->addConvPool("enc_conv4b", x, Activation::ReLU);
 
     x = graph->addConv("enc_conv5a", pool4, Activation::ReLU);
-    x = graph->addConv("enc_conv5b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addConv("enc_conv5b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv4a", x, pool3, Activation::ReLU);
-    x = graph->addConv("dec_conv4b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addUpsampleConcatConv("dec_conv4a", x, pool3, Activation::ReLU);
+    x = graph->addConv("dec_conv4b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv3a", x, pool2, Activation::ReLU);
-    x = graph->addConv("dec_conv3b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addUpsampleConcatConv("dec_conv3a", x, pool2, Activation::ReLU);
+    x = graph->addConv("dec_conv3b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv2a", x, pool1, Activation::ReLU);
-    x = graph->addConv("dec_conv2b", x, Activation::ReLU, PostOp::Upsample);
+    x = graph->addUpsampleConcatConv("dec_conv2a", x, pool1, Activation::ReLU);
+    x = graph->addConv("dec_conv2b", x, Activation::ReLU);
 
-    x = graph->addConcatConv("dec_conv1a", x, inputProcess, Activation::ReLU);
+    x = graph->addUpsampleConcatConv("dec_conv1a", x, inputProcess, Activation::ReLU);
     x = graph->addConv("dec_conv1b", x, Activation::ReLU);
     x = graph->addConv("dec_conv1c", x, Activation::ReLU);
 

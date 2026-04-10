@@ -9,25 +9,27 @@ OIDN_NAMESPACE_BEGIN
   ConcatConvCHW::ConcatConvCHW(Engine* engine, const ConcatConvDesc& desc)
     : ConcatConv(desc)
   {
-    if (src1Desc.layout == TensorLayout::hwc)
+    if (src0Desc.layout == TensorLayout::hwc)
       throw std::invalid_argument("unsupported concat+conv source layout");
+    if (fusion != Fusion::None && fusion != Fusion::PoolDst) // only post-ops supported
+      throw std::invalid_argument("unsupported concat+conv fusion");
 
-    TensorDims srcDims{src1Desc.getC() + src2Desc.getC(), src1Desc.getH(), src1Desc.getW()};
-    TensorDims srcPaddedDims{src1Desc.getPaddedC() + src2Desc.getPaddedC(), src1Desc.getH(), src1Desc.getW()};
-    srcDesc = {srcDims, srcPaddedDims, src1Desc.layout, src1Desc.dataType};
+    TensorDims srcDims{src0Desc.getC() + src1Desc.getC(), src0Desc.getH(), src0Desc.getW()};
+    TensorDims srcPaddedDims{src0Desc.getPaddedC() + src1Desc.getPaddedC(), src0Desc.getH(), src0Desc.getW()};
+    srcDesc = {srcDims, srcPaddedDims, src0Desc.layout, src0Desc.dataType};
 
-    conv = engine->newConv({srcDesc, weightDesc, biasDesc, activation, PostOp::None, fastMath});
+    conv = engine->newConv({srcDesc, weightDesc, biasDesc, activation, fusion, fastMath});
   }
 
   void ConcatConvCHW::updateSrc()
   {
-    if (!src1->getBuffer() || !src2->getBuffer())
+    if (!src0->getBuffer() || !src1->getBuffer())
       throw std::invalid_argument("concat+conv sources must be backed by buffers");
-    if (src1->getBuffer() != src2->getBuffer() ||
-        (static_cast<char*>(src1->getPtr()) + src1->getByteSize()) != static_cast<char*>(src2->getPtr()))
+    if (src0->getBuffer() != src1->getBuffer() ||
+        (static_cast<char*>(src0->getPtr()) + src0->getByteSize()) != static_cast<char*>(src1->getPtr()))
       throw std::invalid_argument("concat+conv sources are not pre-concatenated in memory");
 
-    auto src = src1->getBuffer()->newTensor(srcDesc, src1->getByteOffset());
+    auto src = src0->getBuffer()->newTensor(srcDesc, src0->getByteOffset());
     conv->setSrc(src);
   }
 

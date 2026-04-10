@@ -62,20 +62,27 @@ OIDN_NAMESPACE_BEGIN
   Ref<Op> Graph::addConv(const std::string& name,
                          const Ref<Op>& srcOp,
                          Activation activation,
-                         PostOp postOp)
+                         Fusion fusion)
   {
-    if (postOp != PostOp::None && !engine->isConvSupported(postOp))
+    if (fusion != Fusion::None && !engine->isConvSupported(fusion))
     {
       // If the engine does not support the specified fused convolution, split it into two ops
-      auto conv = addConv(name, srcOp, activation, PostOp::None);
-      switch (postOp)
+      switch (fusion)
       {
-      case PostOp::Pool:
-        return addPool(name + "_pool", conv);
-      case PostOp::Upsample:
-        return addUpsample(name + "_upsample", conv);
+      case Fusion::UpsampleSrc0:
+        {
+           auto srcUpsample = addUpsample(name + "_upsample", srcOp);
+           return addConv(name, srcUpsample, activation);
+        }
+
+      case Fusion::PoolDst:
+        {
+           auto conv = addConv(name, srcOp, activation);
+           return addPool(name + "_pool", conv);
+        }
+
       default:
-        throw std::invalid_argument("cannot split fused convolution");
+        throw std::invalid_argument("unsupported convolution fusion");
       }
     }
 
@@ -106,7 +113,7 @@ OIDN_NAMESPACE_BEGIN
                                 device->getTensorDataType()};
 
     auto srcAlloc = tensorAllocs[srcOp.get()];
-    auto conv = engine->newConv({srcAlloc->desc, finalWeightDesc, finalBiasDesc, activation, postOp, fastMath});
+    auto conv = engine->newConv({srcAlloc->desc, finalWeightDesc, finalBiasDesc, activation, fusion, fastMath});
     conv->setName(name);
     auto dstAlloc = addOp(conv, {srcOp}, conv->getDstDesc());
 
@@ -143,11 +150,30 @@ OIDN_NAMESPACE_BEGIN
     return conv;
   }
 
-  Ref<Op> Graph::addConcatConv(const std::string& name,
-                               const Ref<Op>& src1Op,
-                               const Ref<Op>& src2Op,
-                               Activation activation)
+  Ref<Op> Graph::addConvPool(const std::string& name,
+                             const Ref<Op>& srcOp,
+                             Activation activation)
   {
+    return addConv(name, srcOp, activation, Fusion::PoolDst);
+  }
+
+  Ref<Op> Graph::addConcatConv(const std::string& name,
+                               const Ref<Op>& src0Op,
+                               const Ref<Op>& src1Op,
+                               Activation activation,
+                               Fusion fusion)
+  {
+    Device* device = engine->getDevice();
+
+    const bool fusionSupported = engine->isConcatConvSupported(fusion);
+    if (fusion == Fusion::UpsampleSrc0 && !fusionSupported &&
+        (device->getTensorLayout() != TensorLayout::hwc || !engine->isConvSupported(fusion)))
+    {
+      // Need to split into separate upsample and concat+conv
+      auto src0Upsample = addUpsample(name + "_upsample0", src0Op);
+      return addConcatConv(name, src0Upsample, src1Op, activation);
+    }
+
     const std::string weightName = name + ".weight";
     const std::string biasName   = name + ".bias";
     Ref<Tensor> weight = (*constTensors)[weightName];
@@ -156,16 +182,15 @@ OIDN_NAMESPACE_BEGIN
     if (weight->getRank() != 4 || bias->getRank() != 1)
       throw std::invalid_argument("invalid convolution weight/bias");
 
-    Device* device = engine->getDevice();
     const int blockC = device->getTensorBlockC();
 
+    auto src0Alloc = tensorAllocs[src0Op.get()];
     auto src1Alloc = tensorAllocs[src1Op.get()];
-    auto src2Alloc = tensorAllocs[src2Op.get()];
+    const TensorDesc src0Desc = src0Alloc->desc;
     const TensorDesc src1Desc = src1Alloc->desc;
-    const TensorDesc src2Desc = src2Alloc->desc;
 
     TensorDims finalWeightDims{round_up(weight->getO(), blockC),
-                               src1Desc.getPaddedC() + src2Desc.getPaddedC(),
+                               src0Desc.getPaddedC() + src1Desc.getPaddedC(),
                                weight->getH(),
                                weight->getW()};
 
@@ -179,72 +204,31 @@ OIDN_NAMESPACE_BEGIN
                                 TensorLayout::x,
                                 device->getTensorDataType()};
 
-    ConcatConvDesc concatConvDesc{src1Desc, src2Desc, finalWeightDesc, finalBiasDesc, activation, fastMath};
+    ConcatConvDesc concatConvDesc{src0Desc, src1Desc, finalWeightDesc, finalBiasDesc, activation, fusion, fastMath};
 
-    if (device->getTensorLayout() == TensorLayout::hwc)
+    if (fusionSupported || device->getTensorLayout() != TensorLayout::hwc)
     {
-      auto concatConv = makeRef<ConcatConvHWC>(engine, concatConvDesc);
+      Ref<ConcatConv> concatConv;
+      std::shared_ptr<TensorAlloc> dstAlloc;
+
+      if (fusionSupported)
+      {
+        // Device-specific concat+conv is supported
+        concatConv = engine->newConcatConv(concatConvDesc);
+        dstAlloc = addOp(concatConv, {src0Op, src1Op}, concatConv->getDstDesc());
+      }
+      else
+      {
+        // Generic implicit concat+conv for CHW layout, which requires pre-concatenated source tensors
+        concatConv = makeRef<ConcatConvCHW>(engine, concatConvDesc);
+        dstAlloc = addOp(concatConv, {src0Op, src1Op}, concatConv->getDstDesc(), true);
+      }
+
       concatConv->setName(name);
-      auto dstAlloc = addOp(concatConv, {src1Op, src2Op}, concatConv->getDstDesc());
 
       lazyInits.push_back([=]()
       {
-        concatConv->setSrc(src1Alloc->tensor, src2Alloc->tensor);
-        concatConv->setDst(dstAlloc->tensor);
-
-        const std::string weight1Name = weightName + "1";
-        const std::string weight2Name = weightName + "2";
-        Ref<Tensor> finalWeight1 = getCachedConstTensor(weight1Name, concatConv->getWeight1Desc());
-        Ref<Tensor> finalWeight2 = getCachedConstTensor(weight2Name, concatConv->getWeight2Desc());
-
-        if (!finalWeight1 || !finalWeight2)
-        {
-          finalWeight1 = makeRef<HostTensor>(concatConv->getWeight1Desc());
-          finalWeight2 = makeRef<HostTensor>(concatConv->getWeight2Desc());
-
-          reorderWeight(*weight, 0, src1Desc.getC(),
-                        *finalWeight1, 0, src1Desc.getPaddedC());
-          reorderWeight(*weight, src1Desc.getC(), src2Desc.getC(),
-                        *finalWeight2, 0, src2Desc.getPaddedC());
-
-          if (device->needWeightAndBiasOnDevice())
-          {
-            finalWeight1 = finalWeight1->toDevice(engine);
-            finalWeight2 = finalWeight2->toDevice(engine);
-          }
-
-          setCachedConstTensor(weight1Name, finalWeight1);
-          setCachedConstTensor(weight2Name, finalWeight2);
-        }
-
-        Ref<Tensor> finalBias = getCachedConstTensor(biasName, finalBiasDesc);
-        if (!finalBias)
-        {
-          finalBias = makeRef<HostTensor>(finalBiasDesc);
-          reorderBias(*bias, *finalBias);
-          if (device->needWeightAndBiasOnDevice())
-            finalBias = finalBias->toDevice(engine);
-          setCachedConstTensor(biasName, finalBias);
-        }
-
-        concatConv->setWeight(finalWeight1, finalWeight2);
-        concatConv->setBias(finalBias);
-      });
-
-      privateByteSize += concatConv->getWeight1Desc().getByteSize() +
-                         concatConv->getWeight2Desc().getByteSize() +
-                         finalBiasDesc.getByteSize();
-      return concatConv;
-    }
-    else
-    {
-      auto concatConv = makeRef<ConcatConvCHW>(engine, concatConvDesc);
-      concatConv->setName(name);
-      auto dstAlloc = addOp(concatConv, {src1Op, src2Op}, concatConv->getDstDesc(), true);
-
-      lazyInits.push_back([=]()
-      {
-        concatConv->setSrc(src1Alloc->tensor, src2Alloc->tensor);
+        concatConv->setSrc(src0Alloc->tensor, src1Alloc->tensor);
         concatConv->setDst(dstAlloc->tensor);
 
         Ref<Tensor> finalWeight = getCachedConstTensor(weightName, finalWeightDesc);
@@ -252,10 +236,10 @@ OIDN_NAMESPACE_BEGIN
         {
           finalWeight = makeRef<HostTensor>(finalWeightDesc);
 
-          reorderWeight(*weight, 0, src1Desc.getC(),
-                        *finalWeight, 0, src1Desc.getPaddedC());
-          reorderWeight(*weight, src1Desc.getC(), src2Desc.getC(),
-                        *finalWeight, src1Desc.getPaddedC(), src2Desc.getPaddedC());
+          reorderWeight(*weight, 0, src0Desc.getC(),
+                        *finalWeight, 0, src0Desc.getPaddedC());
+          reorderWeight(*weight, src0Desc.getC(), src1Desc.getC(),
+                        *finalWeight, src0Desc.getPaddedC(), src1Desc.getPaddedC());
 
           if (device->needWeightAndBiasOnDevice())
             finalWeight = finalWeight->toDevice(engine);
@@ -280,6 +264,70 @@ OIDN_NAMESPACE_BEGIN
       privateByteSize += finalWeightDesc.getByteSize() + finalBiasDesc.getByteSize();
       return concatConv;
     }
+    else
+    {
+      // For HWC layout use generic concat+conv that splits the convolution per source and sums the results
+      auto concatConv = makeRef<ConcatConvHWC>(engine, concatConvDesc);
+      concatConv->setName(name);
+      auto dstAlloc = addOp(concatConv, {src0Op, src1Op}, concatConv->getDstDesc());
+
+      lazyInits.push_back([=]()
+      {
+        concatConv->setSrc(src0Alloc->tensor, src1Alloc->tensor);
+        concatConv->setDst(dstAlloc->tensor);
+
+        const std::string weight0Name = weightName + "0";
+        const std::string weight1Name = weightName + "1";
+        Ref<Tensor> finalWeight0 = getCachedConstTensor(weight0Name, concatConv->getWeight0Desc());
+        Ref<Tensor> finalWeight1 = getCachedConstTensor(weight1Name, concatConv->getWeight1Desc());
+
+        if (!finalWeight0 || !finalWeight1)
+        {
+          finalWeight0 = makeRef<HostTensor>(concatConv->getWeight0Desc());
+          finalWeight1 = makeRef<HostTensor>(concatConv->getWeight1Desc());
+
+          reorderWeight(*weight, 0, src0Desc.getC(),
+                        *finalWeight0, 0, src0Desc.getPaddedC());
+          reorderWeight(*weight, src0Desc.getC(), src1Desc.getC(),
+                        *finalWeight1, 0, src1Desc.getPaddedC());
+
+          if (device->needWeightAndBiasOnDevice())
+          {
+            finalWeight0 = finalWeight0->toDevice(engine);
+            finalWeight1 = finalWeight1->toDevice(engine);
+          }
+
+          setCachedConstTensor(weight0Name, finalWeight0);
+          setCachedConstTensor(weight1Name, finalWeight1);
+        }
+
+        Ref<Tensor> finalBias = getCachedConstTensor(biasName, finalBiasDesc);
+        if (!finalBias)
+        {
+          finalBias = makeRef<HostTensor>(finalBiasDesc);
+          reorderBias(*bias, *finalBias);
+          if (device->needWeightAndBiasOnDevice())
+            finalBias = finalBias->toDevice(engine);
+          setCachedConstTensor(biasName, finalBias);
+        }
+
+        concatConv->setWeight(finalWeight0, finalWeight1);
+        concatConv->setBias(finalBias);
+      });
+
+      privateByteSize += concatConv->getWeight0Desc().getByteSize() +
+                         concatConv->getWeight1Desc().getByteSize() +
+                         finalBiasDesc.getByteSize();
+      return concatConv;
+    }
+  }
+
+  Ref<Op> Graph::addUpsampleConcatConv(const std::string& name,
+                                       const Ref<Op>& src0Op,
+                                       const Ref<Op>& src1Op,
+                                       Activation activation)
+  {
+    return addConcatConv(name, src0Op, src1Op, activation, Fusion::UpsampleSrc0);
   }
 
   Ref<Op> Graph::addPool(const std::string& name,

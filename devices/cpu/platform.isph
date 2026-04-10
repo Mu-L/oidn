@@ -39,9 +39,9 @@ enum DataType
   DataType_Float32,
 };
 
-enum PostOp
+enum Fusion
 {
-  PostOp_None,
-  PostOp_Pool,
-  PostOp_Upsample
+  Fusion_None,
+  Fusion_UpsampleSrc0,
+  Fusion_PoolDst
 };

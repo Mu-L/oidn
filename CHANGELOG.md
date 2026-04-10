@@ -1,6 +1,11 @@
 Version History
 ---------------
 
+### Changes in v2.5.0:
+
+-   Improve performance and reduce memory usage for Intel GPUs with XMX support
+    and CPUs with AMX-FP16 support
+
 ### Changes in v2.4.1:
 
 -   Added AMD RDNA 3.5 GFX1152 GPU support

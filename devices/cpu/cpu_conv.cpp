@@ -67,8 +67,8 @@ OIDN_NAMESPACE_BEGIN
 
   void CPUConv::submitKernels(const Ref<CancellationToken>& ct)
   {
-    if (!src || !dst)
-      throw std::logic_error("conving source/destination not set");
+    if (!src || !dst || !weight || !bias)
+      throw std::logic_error("convolution argument not set");
 
     ispc::CPUConvKernel kernel;
     kernel.src    = *src;
