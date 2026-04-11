@@ -185,13 +185,13 @@ additional prerequisites are needed:
 
 #### CPU device:
 
-  - [Intel® SPMD Program Compiler (ISPC)](http://ispc.github.io) 1.29.1
+  - [Intel® SPMD Program Compiler (ISPC)](http://ispc.github.io) 1.30.0
     or newer. Please obtain a release of ISPC from the [ISPC downloads
     page](https://ispc.github.io/downloads.html). The build system looks
     for ISPC in the `PATH` and in the directory right “next to” the
     checked-out Intel Open Image Denoise sources. For example, if Intel
     Open Image Denoise is in `~/Projects/oidn`, ISPC will also be
-    searched in `~/Projects/ispc-v1.29.1-linux`. Alternatively set the
+    searched in `~/Projects/ispc-v1.30.0-linux`. Alternatively set the
     CMake variable `ISPC_EXECUTABLE` to the location of the ISPC
     compiler.
 
@@ -203,7 +203,7 @@ additional prerequisites are needed:
   - oneAPI DPC++ Compiler, one of the following versions (other versions
     might work as well but have *not* been validated with Intel Open
     Image Denoise):
-    
+
       - [oneAPI DPC++
         Compiler 6.2.1](https://github.com/intel/llvm/releases/tag/v6.2.1).
         This is the open source version of the compiler.
@@ -213,7 +213,7 @@ additional prerequisites are needed:
 
   - *Optional*: Intel® Graphics Offline Compiler for OpenCL™ Code
     (OCLOC), if building with `OIDN_DEVICE_SYCL_AOT` enabled
-    
+
       - Windows: Version [2025.3.3
         / 32.0.101.8331](https://registrationcenter-download.intel.com/akdlm/IRC_NAS/cb17f6e4-6e61-47c7-bb27-1008b23f1c7b/intel-ocloc-2025.3.3.4_offline.exe)
         or newer as a [standalone component of Intel® oneAPI
@@ -221,7 +221,7 @@ additional prerequisites are needed:
         which must be extracted and its contents added to the `PATH`.
         Also included with [Intel® oneAPI Base
         Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/toolkits.html#base-kit).
-    
+
       - Linux: Included with [Intel® software for General Purpose GPU
         capabilities](https://dgpu-docs.intel.com) release
         [LTS 2523.x](https://dgpu-docs.intel.com/releases/LTS-release-notes.html#release-2025-12-11)
@@ -283,25 +283,25 @@ This script will put the `icx` and `icpx` compiler executables from the
 Intel(R) oneAPI DPC++/C++ Compiler in your `PATH`.
 
   - Create a build directory, and go into it using a command prompt
-    
+
         mkdir oidn/build
         cd oidn/build
-    
+
     (We do recommend having separate build directories for different
     configurations such as release, debug, etc.).
 
   - CMake will use the default compiler, which on most Linux machines is
     `gcc`, but it can be switched to `clang` by executing the following:
-    
+
         cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
-    
+
     If you are building with SYCL support, you must set the DPC++
     compiler (`clang`/`clang++` or `icx`/`icpx`) as the C/C++ compiler
     here. Note that the compiler variables cannot be changed after the
     first `cmake` or `ccmake` run.
 
   - Open the CMake configuration dialog
-    
+
         ccmake ..
 
   - Make sure to properly set the build mode and enable the components
@@ -309,7 +309,7 @@ Intel(R) oneAPI DPC++/C++ Compiler in your `PATH`.
     and other device support must be enabled manually (e.g. with the
     `OIDN_DEVICE_SYCL` option). Then type ’c’onfigure and ’g’enerate.
     When back on the command prompt, build the library using
-    
+
         ninja
 
 ## Compiling on Windows
@@ -337,26 +337,26 @@ because not all devices can be built using the Visual Studio generator
 
   - Create a build directory, and go into it using a Visual Studio
     command prompt
-    
+
         mkdir oidn/build
         cd oidn/build
-    
+
     (We do recommend having separate build directories for different
     configurations such as release, debug, etc.).
 
   - CMake will use the default compiler, which on most Windows machines
     is MSVC, but it can be switched to `clang` by executing the
     following:
-    
+
         cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
-    
+
     If you are building with SYCL support, you must set the DPC++
     compiler (`clang`/`clang++` or `icx`) as the C/C++ compiler here.
     Note that the compiler variables cannot be changed after the first
     `cmake` or `cmake-gui` run.
 
   - Open the CMake GUI (`cmake-gui.exe`)
-    
+
         cmake-gui ..
 
   - Make sure to properly set the build mode and enable the components
@@ -364,7 +364,7 @@ because not all devices can be built using the Visual Studio generator
     and other device support must be enabled manually
     (e.g. `OIDN_DEVICE_SYCL` option). Then click on Configure and
     Generate. When back on the command prompt, build the library using
-    
+
         ninja
 
 ## CMake Configuration

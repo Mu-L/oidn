@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "tensor_accessor.isph"
+#include <amx.isph>
 
 struct AMXTileConfig
 {
@@ -127,10 +128,10 @@ inline unmasked void CPUConvAMXKernel_computeBlock_f16(
   varying float accumRow1_ocb1[blockOW]; // accumulator row 1, output channels 16..31
 
   // Initialize the accumulator tiles to zero
-  @llvm.x86.tilezero(tmm_accumRow0_ocb0);
-  @llvm.x86.tilezero(tmm_accumRow0_ocb1);
-  @llvm.x86.tilezero(tmm_accumRow1_ocb0);
-  @llvm.x86.tilezero(tmm_accumRow1_ocb1);
+  amx_tile_zero(tmm_accumRow0_ocb0);
+  amx_tile_zero(tmm_accumRow0_ocb1);
+  amx_tile_zero(tmm_accumRow1_ocb0);
+  amx_tile_zero(tmm_accumRow1_ocb1);
 
   const uniform int8* uniform weightPtr = Tensor_getPtr<float16>(self->weight, oc);
 
@@ -179,34 +180,34 @@ inline unmasked void CPUConvAMXKernel_computeBlock_f16(
         const uniform bool isLast = (kh == KH - 1) && (kw == KW - 1);
 
         // Load weights for output channel block 0
-        @llvm.x86.tileloadd64(tmm_weight, weightPtr, 64);
+        amx_tile_load(tmm_weight, weightPtr, 64);
 
         // Load input block row 0
-        @llvm.x86.tileloadd64(tmm_inRow0, inRowPtr, 64);
+        amx_tile_load(tmm_inRow0, inRowPtr, 64);
         // Multiply-accumulate block row 0, output channel block 0
-        @llvm.x86.tdpfp16ps(tmm_accumRow0_ocb0, tmm_inRow0, tmm_weight);
+        amx_dpfp16ps(tmm_accumRow0_ocb0, tmm_inRow0, tmm_weight);
         if (isLast)
-          @llvm.x86.tilestored64(tmm_accumRow0_ocb0, (uniform int8* uniform)&accumRow0_ocb0, 64);
+          amx_tile_store(tmm_accumRow0_ocb0, (uniform int8* uniform)&accumRow0_ocb0, 64);
 
         // Load input block row 1
-        @llvm.x86.tileloadd64(tmm_inRow1, inRowPtr + inRowByteStride, 64);
+        amx_tile_load(tmm_inRow1, inRowPtr + inRowByteStride, 64);
         // Multiply-accumulate block row 1, output channel block 0
-        @llvm.x86.tdpfp16ps(tmm_accumRow1_ocb0, tmm_inRow1, tmm_weight);
+        amx_dpfp16ps(tmm_accumRow1_ocb0, tmm_inRow1, tmm_weight);
         if (isLast)
-          @llvm.x86.tilestored64(tmm_accumRow1_ocb0, (uniform int8* uniform)&accumRow1_ocb0, 64);
+          amx_tile_store(tmm_accumRow1_ocb0, (uniform int8* uniform)&accumRow1_ocb0, 64);
 
         // Load weights for output channel block 1
-        @llvm.x86.tileloadd64(tmm_weight, weightPtr + 1024, 64);
+        amx_tile_load(tmm_weight, weightPtr + 1024, 64);
 
         // Multiply-accumulate block row 0, output channel block 1
-        @llvm.x86.tdpfp16ps(tmm_accumRow0_ocb1, tmm_inRow0, tmm_weight);
+        amx_dpfp16ps(tmm_accumRow0_ocb1, tmm_inRow0, tmm_weight);
         if (isLast)
-          @llvm.x86.tilestored64(tmm_accumRow0_ocb1, (uniform int8* uniform)&accumRow0_ocb1, 64);
+          amx_tile_store(tmm_accumRow0_ocb1, (uniform int8* uniform)&accumRow0_ocb1, 64);
 
         // Multiply-accumulate block row 1, output channel block 1
-        @llvm.x86.tdpfp16ps(tmm_accumRow1_ocb1, tmm_inRow1, tmm_weight);
+        amx_dpfp16ps(tmm_accumRow1_ocb1, tmm_inRow1, tmm_weight);
         if (isLast)
-          @llvm.x86.tilestored64(tmm_accumRow1_ocb1, (uniform int8* uniform)&accumRow1_ocb1, 64);
+          amx_tile_store(tmm_accumRow1_ocb1, (uniform int8* uniform)&accumRow1_ocb1, 64);
 
         inRowPtr  += wByteStride; // shift input block by one column
         weightPtr += 2048;        // next pair of weight matrix tiles
@@ -375,11 +376,11 @@ export void CPUConvAMXKernel_run_f16(
               uniform bool isFirst, uniform bool isLast)
 {
   if (isFirst)
-    @llvm.x86.ldtilecfg((const uniform int8* uniform)&self->tileConfig);
+    amx_tile_loadconfig((const uniform int8* uniform)&self->tileConfig);
 
   for (uniform int oh = ohBegin; oh < ohEnd; oh += blockOH)
     CPUConvAMXKernel_computeBlock_f16(self, oc, oh, ow);
 
   if (isLast)
-    @llvm.x86.tilerelease();
+    amx_tile_release();
 }
