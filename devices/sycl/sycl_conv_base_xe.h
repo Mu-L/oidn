@@ -55,14 +55,75 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
     using InRows  = simd<MatmulT, blockIW * blockC>[blockOH];
     using OutRows = simd<SrcDstT, blockOW * blockC>[blockOH];
 
-    // Loads a row from a src tensor, assuming the row is within the tensor bounds
+  #if defined(OIDN_ARCH_XEHPC) || defined(OIDN_ARCH_XE2)
+    // Loads a row from a tensor using LSC 2D block loads with implicit zero padding
     template<int N>
-    static oidn_inline void loadInnerRow(simd<MatmulT, N>& row,
-                                         const TensorAccessor3D<SrcDstT, srcDstLayout>& src,
-                                         int ic, int ih, int iw)
+    static oidn_inline void loadRow(simd<MatmulT, N>& row,
+                                    const TensorAccessor3D<SrcDstT, srcDstLayout>& src,
+                                    int ic, int ih, int iw)
+    {
+      constexpr int lscBlockN = 64 / sizeof(SrcDstT); // LSC 2D block width in elements
+      static_assert(N % lscBlockN == 0, "row size must be multiple of LSC 2D block width");
+
+      const SrcDstT* surfPtr = &src(ic, 0, 0);
+      const uint surfWidth  = src.getByteOffset.hByteStride - 1; // bytes - 1
+      const uint surfHeight = src.H - 1;                         // rows - 1
+      const uint surfPitch  = surfWidth;
+
+      #pragma unroll
+      for (int n = 0; n < N; n += lscBlockN)
+      {
+        row.template select<lscBlockN, 1>(n) =
+          load_2d<SrcDstT, lscBlockN, 1>(surfPtr, surfWidth, surfHeight, surfPitch,
+                                         iw * blockC + n, ih);
+      }
+    }
+
+    // Loads multiple rows from a tensor using LSC 2D block loads with implicit zero padding
+    template<int numRows>
+    static oidn_inline void loadRows(InRows& rows,
+                                     const TensorAccessor3D<SrcDstT, srcDstLayout>& src,
+                                     int ic, int ih, int iw)
+    {
+      constexpr int N = blockIW * blockC;
+      constexpr int lscBlockN = 64 / sizeof(SrcDstT);
+      static_assert(N % lscBlockN == 0, "row size must be multiple of LSC 2D block width");
+
+      const SrcDstT* surfPtr = &src(ic, 0, 0);
+      const uint surfWidth  = src.getByteOffset.hByteStride - 1; // bytes - 1
+      const uint surfHeight = src.H - 1;                         // rows - 1
+      const uint surfPitch  = surfWidth;
+
+      #pragma unroll
+      for (int n = 0; n < N; n += lscBlockN)
+      {
+        auto lscBlock = load_2d<SrcDstT, lscBlockN, numRows>(
+          surfPtr, surfWidth, surfHeight, surfPitch,
+          iw * blockC + n, ih);
+
+        #pragma unroll
+        for (int r = 0; r < numRows; ++r)
+        {
+          rows[r].template select<lscBlockN, 1>(n) =
+            lscBlock.template select<lscBlockN, 1>(r * lscBlockN);
+        }
+      }
+    }
+  #else
+    // Loads a row from a tensor using regular LSC block loads with explicit bounds checking and padding
+    template<int N>
+    static oidn_inline void loadRow(simd<MatmulT, N>& row,
+                                    const TensorAccessor3D<SrcDstT, srcDstLayout>& src,
+                                    int ic, int ih, int iw)
     {
       static_assert(N % blockC == 0, "non-integer width");
       constexpr int W = N / blockC;
+
+      if (ih < 0 || ih >= src.H)
+      {
+        row = 0;
+        return;
+      }
 
       if (iw >= 0 && iw + W <= src.W)
       {
@@ -89,21 +150,18 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
       }
     }
 
-    template<int N>
-    static oidn_inline void loadRow(simd<MatmulT, N>& row,
-                                    const TensorAccessor3D<SrcDstT, srcDstLayout>& src,
-                                    int ic, int ih, int iw)
+    template<int numRows>
+    static oidn_inline void loadRows(InRows& rows,
+                                     const TensorAccessor3D<SrcDstT, srcDstLayout>& src,
+                                     int ic, int ih, int iw)
     {
-      if (ih < 0 || ih >= src.H)
-      {
-        row = 0;
-        return;
-      }
-
-      loadInnerRow(row, src, ic, ih, iw);
+      #pragma unroll
+      for (int r = 0; r < numRows; ++r)
+        loadRow(rows[r], src, ic, ih + r, iw);
     }
+  #endif
 
-    // Loads a row from a virtually 2x upsampled src tensor
+    // Loads a row from a virtually 2x upsampled tensor
     template<int N>
     static oidn_inline void loadUpsampleRow(simd<MatmulT, N>& row,
                                             const TensorAccessor3D<SrcDstT, srcDstLayout>& src,
@@ -116,19 +174,14 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
       ih >>= 1;
       iw >>= 1;
 
-      if (ih < 0 || ih >= src.H)
-      {
-        row = 0;
-        return;
-      }
-
       constexpr int alignW = PW & 1; // assumption: iw%2 == PW%2
       constexpr int srcW = (W >> 1) + alignW; // number of source pixels to load
 
       simd<MatmulT, srcW * blockC> srcRow;
-      loadInnerRow(srcRow, src, ic, ih, iw);
+      loadRow(srcRow, src, ic, ih, iw);
 
       // Upsample by copying the pixels from the source row to the destination row
+      #pragma unroll
       for (int i = 0; i < W; ++i)
       {
         row.template select<blockC, 1>(i * blockC) =
@@ -136,16 +189,73 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
       }
     }
 
-    // Stores a row to the dst tensor
-    // Pixels can be stored in chunks of K to improve performance
-    template<int K = 1, int N>
+  #if defined(OIDN_ARCH_XEHPC) || defined(OIDN_ARCH_XE2)
+    // Stores a row to a tensor using LSC 2D block stores which silently drop out-of-bounds writes
+    template<int N>
+    static oidn_inline void storeRow(simd<SrcDstT, N>& row,
+                                     const TensorAccessor3D<SrcDstT, srcDstLayout>& dst,
+                                     int oc, int oh, int ow)
+    {
+      constexpr int lscBlockN = 64 / sizeof(SrcDstT); // LSC 2D block width in elements
+      static_assert(N % lscBlockN == 0, "row size must be multiple of LSC 2D block width");
+
+      SrcDstT* surfPtr = &dst(oc, 0, 0);
+      const uint surfWidth  = dst.W * blockC * sizeof(SrcDstT) - 1; // bytes - 1
+      const uint surfHeight = dst.H - 1;                            // rows - 1
+      const uint surfPitch  = surfWidth;
+
+      #pragma unroll
+      for (int n = 0; n < N; n += lscBlockN)
+      {
+        store_2d<SrcDstT, lscBlockN, 1>(
+          surfPtr, surfWidth, surfHeight, surfPitch,
+          ow * blockC + n, oh,
+          row.template select<lscBlockN, 1>(n).read());
+      }
+    }
+
+    // Stores multiple rows to a tensor using LSC 2D block stores which silently drop out-of-bounds writes
+    template<int numRows>
+    static oidn_inline void storeRows(OutRows& outRows,
+                                      const TensorAccessor3D<SrcDstT, srcDstLayout>& dst,
+                                      int oc, int oh, int ow)
+    {
+      constexpr int N = blockOW * blockC;
+      constexpr int lscBlockN = 64 / sizeof(SrcDstT); // LSC 2D block width in elements
+      static_assert(N % lscBlockN == 0, "row size must be multiple of LSC 2D block width");
+
+      SrcDstT* surfPtr = &dst(oc, 0, 0);
+      const uint surfWidth  = dst.getByteOffset.hByteStride - 1; // bytes - 1
+      const uint surfHeight = dst.H - 1;                         // rows - 1
+      const uint surfPitch  = surfWidth;
+
+      #pragma unroll
+      for (int n = 0; n < N; n += lscBlockN)
+      {
+        simd<SrcDstT, lscBlockN * numRows> lscBlock;
+
+        #pragma unroll
+        for (int r = 0; r < numRows; ++r)
+        {
+          lscBlock.template select<lscBlockN, 1>(r * lscBlockN) =
+            outRows[r].template select<lscBlockN, 1>(n);
+        }
+
+        store_2d<SrcDstT, lscBlockN, numRows>(
+          surfPtr, surfWidth, surfHeight, surfPitch,
+          ow * blockC + n, oh,
+          lscBlock);
+      }
+    }
+  #else
+    // Stores a row to a tensor using regular LSC block stores with explicit bounds checking
+    template<int N>
     static oidn_inline void storeRow(simd<SrcDstT, N>& row,
                                      const TensorAccessor3D<SrcDstT, srcDstLayout>& dst,
                                      int oc, int oh, int ow)
     {
       static_assert(N % blockC == 0, "non-integer width");
       constexpr int W = N / blockC;
-      static_assert(W % K == 0, "non-integer chunks");
 
       //if (oh >= dst.H)
       //  return;
@@ -159,24 +269,36 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
       else
       {
         // Slow path: store the in-bounds pixels of the row
-        constexpr int numChunks = W / K;
-        constexpr int chunkSize = blockC * K;
-
-        const simd<int, numChunks> owVec(ow, K); // ow, ow+K, ow+2*K, ...
-        simd_mask<numChunks> predVec = owVec < dst.W;
-        simd<uint32_t,  numChunks> dstOffsetVec = dst.getByteOffset(oc, oh, 0) +
-                                                  owVec * dst.getByteOffset.wByteStride;
-        simd<uintptr_t, numChunks> dstAddrVec   = reinterpret_cast<uintptr_t>(dst.ptr) + dstOffsetVec;
+        const simd<int, W> owVec(ow, 1); // ow, ow+1, ow+2, ...
+        simd_mask<W> predVec = owVec < dst.W;
+        simd<uint32_t,  W> dstOffsetVec = dst.getByteOffset(oc, oh, 0) +
+                                          owVec * dst.getByteOffset.wByteStride;
+        simd<uintptr_t, W> dstAddrVec   = reinterpret_cast<uintptr_t>(dst.ptr) + dstOffsetVec;
 
         #pragma unroll
-        for (int i = 0; i < numChunks; ++i)
+        for (int i = 0; i < W; ++i)
         {
           SrcDstT* dstPtr = reinterpret_cast<SrcDstT*>(uintptr_t(dstAddrVec[i]));
-          storeBlock(dstPtr, row.template select<chunkSize, 1>(i * chunkSize).read(),
+          storeBlock(dstPtr, row.template select<blockC, 1>(i * blockC).read(),
                      predVec.template select<1, 1>(i));
         }
       }
     }
+
+    template<int numRows>
+    static oidn_inline void storeRows(OutRows& outRows,
+                                      const TensorAccessor3D<SrcDstT, srcDstLayout>& dst,
+                                      int oc, int oh, int ow)
+    {
+      #pragma unroll
+      for (int r = 0; r < numRows; ++r)
+      {
+        if (oh + r >= dst.H)
+          break;
+        storeRow(outRows[r], dst, oc, oh + r, ow);
+      }
+    }
+  #endif
 
     // Multiply + accumulate block for one kernel row (kh)
     static oidn_inline void mmaBlockKW(AccumRows& accumRows, InRows& inRows, const WeightT* weightPtr, int kh)

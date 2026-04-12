@@ -15,7 +15,6 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
     using Base::KH, Base::KW, Base::PH, Base::PW;
     using Base::blockC, Base::blockOH, Base::blockOW;
     using typename Base::AccumRows, typename Base::InRows, typename Base::OutRows;
-    using Base::loadRow, Base::loadUpsampleRow, Base::mmaBlockKW, Base::finalizeBlock, Base::storeRow;
 
     TensorAccessor3D<SrcDstT, srcDstLayout> src0, src1;
     TensorAccessor4D<WeightT, weightLayout> weight;
@@ -43,7 +42,7 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
         for (int boh = 0; boh < blockOH - 1; ++boh)
         {
           if (boh == 0 || (boh + PH) % 2 == 0) // only need to load every other row due to 2x upsampling
-            loadUpsampleRow(inRows[boh], src0, ic, ih + boh, iw);
+            Base::loadUpsampleRow(inRows[boh], src0, ic, ih + boh, iw);
           else
             inRows[boh] = inRows[boh - 1]; // duplicate previous row
         }
@@ -54,12 +53,12 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
         {
           // Load next input row into ring buffer, upsampling by 2x
           if ((kh + blockOH - 1 + PH) % 2 == 0) // only need to load every other row due to 2x upsampling
-            loadUpsampleRow(inRows[(kh + blockOH - 1) % blockOH], src0, ic, ih + kh + blockOH - 1, iw);
+            Base::loadUpsampleRow(inRows[(kh + blockOH - 1) % blockOH], src0, ic, ih + kh + blockOH - 1, iw);
           else
             inRows[(kh + blockOH - 1) % blockOH] = inRows[(kh + blockOH - 2) % blockOH]; // duplicate previous row
 
           // Multiply + accumulate kernel row
-          mmaBlockKW(accumRows, inRows, &weight(oc, ic, kh, 0), kh);
+          Base::mmaBlockKW(accumRows, inRows, &weight(oc, ic, kh, 0), kh);
         }
       }
 
@@ -67,36 +66,26 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
       for (int ic = 0; ic < src1.C; ic += blockC)
       {
         // Load input rows into ring buffer
-        #pragma unroll
-        for (int boh = 0; boh < blockOH - 1; ++boh)
-          loadRow(inRows[boh], src1, ic, ih + boh, iw);
+        Base::template loadRows<blockOH - 1>(inRows, src1, ic, ih, iw);
 
         // Iterate over kernel height
         #pragma unroll
         for (int kh = 0; kh < KH; ++kh)
         {
           // Load next input row into ring buffer
-          loadRow(inRows[(kh + blockOH - 1) % blockOH], src1, ic, ih + kh + blockOH - 1, iw);
+          Base::loadRow(inRows[(kh + blockOH - 1) % blockOH], src1, ic, ih + kh + blockOH - 1, iw);
 
           // Multiply + accumulate kernel row
-          mmaBlockKW(accumRows, inRows, &weight(oc, src0.C + ic, kh, 0), kh);
+          Base::mmaBlockKW(accumRows, inRows, &weight(oc, src0.C + ic, kh, 0), kh);
         }
       }
 
       // Convert accumulator to output data type, apply bias and activation
       OutRows outRows;
-      finalizeBlock(outRows, accumRows, &bias(oc));
+      Base::finalizeBlock(outRows, accumRows, &bias(oc));
 
       // Store output rows
-      #pragma unroll
-      for (int boh = 0; boh < blockOH; ++boh)
-      {
-        if (oh + boh >= dst.H)
-          break;
-
-        // Store output row
-        storeRow(outRows[boh], dst, oc, oh + boh, ow);
-      }
+      Base::template storeRows<blockOH>(outRows, dst, oc, oh, ow);
     }
   };
 

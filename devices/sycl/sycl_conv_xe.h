@@ -16,7 +16,6 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
     using Base::KH, Base::KW, Base::PH, Base::PW;
     using Base::blockC, Base::blockOH, Base::blockOW;
     using typename Base::AccumRows, typename Base::InRows, typename Base::OutRows;
-    using Base::loadRow, Base::loadUpsampleRow, Base::mmaBlockKW, Base::finalizeBlock, Base::storeRow;
 
     TensorAccessor3D<SrcDstT, srcDstLayout> src;
     TensorAccessor4D<WeightT, weightLayout> weight;
@@ -40,25 +39,23 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
         const int iw = ow - PW;
 
         // Load input rows into a ring buffer
-        #pragma unroll
-        for (int boh = 0; boh < blockOH - 1; ++boh)
-          loadRow(inRows[boh], src, ic, ih + boh, iw);
+        Base::template loadRows<blockOH - 1>(inRows, src, ic, ih, iw);
 
         // Iterate over kernel height
         #pragma unroll
         for (int kh = 0; kh < KH; ++kh)
         {
           // Load next input row into ring buffer
-          loadRow(inRows[(kh + blockOH - 1) % blockOH], src, ic, ih + (kh + blockOH - 1), iw);
+          Base::loadRow(inRows[(kh + blockOH - 1) % blockOH], src, ic, ih + (kh + blockOH - 1), iw);
 
           // Multiply + accumulate kernel row
-          mmaBlockKW(accumRows, inRows, &weight(oc, ic, kh, 0), kh);
+          Base::mmaBlockKW(accumRows, inRows, &weight(oc, ic, kh, 0), kh);
         }
       }
 
       // Convert accumulator to output data type, apply bias and activation
       OutRows outRows;
-      finalizeBlock(outRows, accumRows, &bias(oc));
+      Base::finalizeBlock(outRows, accumRows, &bias(oc));
 
       // Store output rows
       if constexpr (fusion == Fusion::PoolDst)
@@ -75,20 +72,13 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
                                 poolRow2x1.template replicate_vs_w<blockOW / 2, blockC * 2, blockC>(blockC));
 
           // Store pooled row
-          storeRow(poolRow2x2, dst, oc, (oh + boh) / 2, ow / 2);
+          Base::storeRow(poolRow2x2, dst, oc, (oh + boh) / 2, ow / 2);
         }
       }
       else
       {
-        #pragma unroll
-        for (int boh = 0; boh < blockOH; ++boh)
-        {
-          if (oh + boh >= dst.H)
-            break;
-
-          // Store output row
-          storeRow(outRows[boh], dst, oc, oh + boh, ow);
-        }
+        // Store output rows
+        Base::template storeRows<blockOH>(outRows, dst, oc, oh, ow);
       }
     }
   };
