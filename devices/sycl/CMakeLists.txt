@@ -176,6 +176,7 @@ if(OIDN_INSTALL_DEPENDENCIES)
         "${_dpcpp_compiler_dir}/../bin/sycl?.dll"
         "${_dpcpp_compiler_dir}/../bin/ur_loader.dll"
         "${_dpcpp_compiler_dir}/../bin/ur_adapter_level_zero.dll"
+        "${_dpcpp_compiler_dir}/../bin/ur_adapter_level_zero_v?.dll"
         "${_dpcpp_compiler_dir}/../bin/ur_win_proxy_loader.dll"
       )
     endif()
@@ -190,6 +191,7 @@ if(OIDN_INSTALL_DEPENDENCIES)
         "${_dpcpp_compiler_dir}/../lib/libsycl.so.?"
         "${_dpcpp_compiler_dir}/../lib/libur_loader.so"
         "${_dpcpp_compiler_dir}/../lib/libur_adapter_level_zero.so"
+        "${_dpcpp_compiler_dir}/../lib/libur_adapter_level_zero_v?.so"
         "${_dpcpp_compiler_dir}/../lib/libumf.so"
       )
     endif()
