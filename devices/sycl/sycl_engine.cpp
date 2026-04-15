@@ -55,10 +55,12 @@ OIDN_NAMESPACE_BEGIN
       return xelp::newSYCLConv(this, desc);
     case SYCLArchCodepath::XeHPG:
       return xehpg::newSYCLConv(this, desc);
-  #if defined(__linux__)
     case SYCLArchCodepath::XeHPC:
+    #if defined(__linux__)
       return xehpc::newSYCLConv(this, desc);
-  #endif
+    #else
+      throw std::logic_error("operation is not implemented");
+    #endif
     case SYCLArchCodepath::Xe2:
       return xe2::newSYCLConv(this, desc);
     }
@@ -72,10 +74,12 @@ OIDN_NAMESPACE_BEGIN
       return xelp::newSYCLConcatConv(this, desc);
     case SYCLArchCodepath::XeHPG:
       return xehpg::newSYCLConcatConv(this, desc);
-  #if defined(__linux__)
     case SYCLArchCodepath::XeHPC:
+    #if defined(__linux__)
       return xehpc::newSYCLConcatConv(this, desc);
-  #endif
+    #else
+      throw std::logic_error("operation is not implemented");
+    #endif
     case SYCLArchCodepath::Xe2:
       return xe2::newSYCLConcatConv(this, desc);
     }
