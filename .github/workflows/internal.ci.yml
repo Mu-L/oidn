@@ -168,7 +168,7 @@ jobs:
       project: oidn
       image: oidn/rockylinux:8
       dpcpp-version: intel-llvm/v6.2.0
-      cmd: scripts/build.py install --compiler clang --config Debug -D OIDN_DEVICE_SYCL=ON -D OIDN_DEVICE_SYCL_AOT=OFF -D OIDN_DEVICE_CUDA=ON
+      cmd: scripts/build.py install --compiler clang --config Debug -D OIDN_DEVICE_SYCL=ON -D OIDN_DEVICE_CUDA=ON
       artifact-out: build-rockylinux8-debug
       artifact-path: build install deps
 
@@ -235,7 +235,7 @@ jobs:
       project: oidn
       image: oidn/rockylinux:8
       dpcpp-version: intel-llvm/v6.2.0
-      cmd: scripts/build.py install --compiler clang --config Debug -D OIDN_DEVICE_SYCL=ON -D OIDN_DEVICE_SYCL_AOT=OFF -D OIDN_DEVICE_CUDA=ON -D OIDN_LIBRARY_NAME=OIDN -D OIDN_API_NAMESPACE=myoidn
+      cmd: scripts/build.py install --compiler clang --config Debug -D OIDN_DEVICE_SYCL=ON -D OIDN_DEVICE_CUDA=ON -D OIDN_LIBRARY_NAME=OIDN -D OIDN_API_NAMESPACE=myoidn
       artifact-out: build-rockylinux8-namespace-debug
       artifact-path: build install deps
 
@@ -1265,7 +1265,7 @@ jobs:
       artifact-path: build install
       cmd: >
         python scripts/build.py install --compiler clang --config Debug
-        -D OIDN_DEVICE_SYCL=ON -D OIDN_DEVICE_SYCL_AOT=OFF -D OIDN_DEVICE_CUDA=ON
+        -D OIDN_DEVICE_SYCL=ON -D OIDN_DEVICE_CUDA=ON
 
   build-windows-namespace:
     secrets: inherit
