@@ -134,10 +134,28 @@ OIDN_NAMESPACE_BEGIN
     {
       if (paddedDims.empty())
         return 0;
-      size_t num = 1;
-      for (size_t i = 0; i < paddedDims.size(); ++i)
-        num *= size_t(paddedDims[i]);
-      return num * getDataTypeSize(dataType);
+
+      const size_t elementSize = getDataTypeSize(dataType);
+
+      if (layout == TensorLayout::Chw8c  ||
+          layout == TensorLayout::Chw16c ||
+          layout == TensorLayout::Chw32c)
+      {
+        // For blocked CHW layouts, the C planes need to be aligned
+        const size_t B = getTensorLayoutInfo(layout).blockC;
+        const size_t cByteStride = elementSize;
+        const size_t wByteStride = B * cByteStride;
+        const size_t hByteStride = size_t(getW()) * wByteStride;
+        const size_t CByteStride = round_up(size_t(getH()) * hByteStride, TensorLayoutTraitsChwBc::CByteAlignment);
+        return size_t(getPaddedC() / B) * CByteStride;
+      }
+      else
+      {
+        size_t num = 1;
+        for (size_t i = 0; i < paddedDims.size(); ++i)
+          num *= size_t(paddedDims[i]);
+        return num * elementSize;
+      }
     }
 
     bool operator ==(const TensorDesc& other) const

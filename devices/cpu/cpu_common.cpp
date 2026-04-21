@@ -65,7 +65,7 @@ OIDN_NAMESPACE_BEGIN
     const uint32_t cByteStride = uint32_t(getDataTypeSize(dataType));
     const uint32_t wByteStride = uint32_t(B) * cByteStride;
     acc.hByteStride = uint32_t(getW()) * wByteStride;
-    acc.CByteStride = uint32_t(getH()) * acc.hByteStride;
+    acc.CByteStride = round_up(uint32_t(getH()) * acc.hByteStride, TensorLayoutTraitsChwBc::CByteAlignment);
 
     return acc;
   }

@@ -108,6 +108,12 @@ OIDN_NAMESPACE_BEGIN
     };
   };
 
+  struct TensorLayoutTraitsChwBc
+  {
+    // Xe 2D block load/store requires C planes to be aligned
+    static constexpr oidn_constant uint32_t CByteAlignment = 64;
+  };
+
   template<typename T, int B>
   struct TensorByteOffsetChwBc
   {
@@ -123,7 +129,7 @@ OIDN_NAMESPACE_BEGIN
     oidn_host_device_inline TensorByteOffsetChwBc(int C, int H, int W)
     {
       hByteStride = uint32_t(W) * wByteStride;
-      CByteStride = uint32_t(H) * hByteStride;
+      CByteStride = round_up(uint32_t(H) * hByteStride, TensorLayoutTraitsChwBc::CByteAlignment);
     }
 
     oidn_host_device_inline uint32_t operator ()(int c, int h, int w) const
