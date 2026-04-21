@@ -27,10 +27,7 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
     static constexpr int blockOC = 8;                 // output channel block size (= exec width)
     static constexpr int blockOCB = blockC / blockOC; // block of output channel blocks
     static constexpr int blockOH = 6; // block output height
-  #elif defined(OIDN_ARCH_XEHPC)
-    using MatmulT = SrcDstT;
-    static constexpr int blockOH = 4; // output block height
-  #elif defined(OIDN_ARCH_XE2)
+  #elif defined(OIDN_ARCH_XEHPC) || defined(OIDN_ARCH_XE2)
     using MatmulT = SrcDstT;
     static constexpr int blockOH = 6; // output block height
   #else
