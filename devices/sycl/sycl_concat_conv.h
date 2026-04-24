@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "sycl_conv_base_xe.h"
+#include "sycl_conv_base.h"
 
 OIDN_NAMESPACE_BEGIN
 OIDN_ARCH_XE_NAMESPACE_BEGIN
@@ -42,7 +42,7 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
         for (int boh = 0; boh < blockOH - 1; ++boh)
         {
           if (boh == 0 || (boh + PH) % 2 == 0) // only need to load every other row due to 2x upsampling
-            Base::loadUpsampleRow(inRows[boh], src0, ic, ih + boh, iw);
+            loadUpsampleRow<PW & 1>(inRows[boh], src0, ic, ih + boh, iw);
           else
             inRows[boh] = inRows[boh - 1]; // duplicate previous row
         }
@@ -53,7 +53,7 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
         {
           // Load next input row into ring buffer, upsampling by 2x
           if ((kh + blockOH - 1 + PH) % 2 == 0) // only need to load every other row due to 2x upsampling
-            Base::loadUpsampleRow(inRows[(kh + blockOH - 1) % blockOH], src0, ic, ih + kh + blockOH - 1, iw);
+            loadUpsampleRow<PW & 1>(inRows[(kh + blockOH - 1) % blockOH], src0, ic, ih + kh + blockOH - 1, iw);
           else
             inRows[(kh + blockOH - 1) % blockOH] = inRows[(kh + blockOH - 2) % blockOH]; // duplicate previous row
 
@@ -66,14 +66,14 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
       for (int ic = 0; ic < src1.C; ic += blockC)
       {
         // Load input rows into ring buffer
-        Base::template loadRows<blockOH - 1>(inRows, src1, ic, ih, iw);
+        loadRows<blockOH - 1>(inRows, src1, ic, ih, iw);
 
         // Iterate over kernel height
         #pragma unroll
         for (int kh = 0; kh < KH; ++kh)
         {
           // Load next input row into ring buffer
-          Base::loadRow(inRows[(kh + blockOH - 1) % blockOH], src1, ic, ih + kh + blockOH - 1, iw);
+          loadRow(inRows[(kh + blockOH - 1) % blockOH], src1, ic, ih + kh + blockOH - 1, iw);
 
           // Multiply + accumulate kernel row
           Base::mmaBlockKW(accumRows, inRows, &weight(oc, src0.C + ic, kh, 0), kh);
@@ -85,7 +85,7 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
       Base::finalizeBlock(outRows, accumRows, &bias(oc));
 
       // Store output rows
-      Base::template storeRows<blockOH>(outRows, dst, oc, oh, ow);
+      storeRows<blockOH>(outRows, dst, oc, oh, ow);
     }
   };
 
@@ -154,7 +154,7 @@ OIDN_ARCH_XE_NAMESPACE_BEGIN
                                ceil_div(dst->getH(), Kernel::blockOH),
                                ceil_div(dst->getW(), Kernel::blockOW)};
 
-      WorkDim<3> groupSize = Kernel::getGroupSize(globalSize, engine->getArch());
+      WorkDim<3> groupSize = Kernel::getGroupSize(globalSize);
 
     #if defined(OIDN_ARCH_XEHPG)
       engine->submitESIMDKernelWithLargeGRF(globalSize / groupSize, groupSize, kernel);

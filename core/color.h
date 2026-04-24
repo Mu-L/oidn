@@ -50,6 +50,26 @@ OIDN_NAMESPACE_BEGIN
         else
           return math::pow((x - d) / b, 1.f/c);
       }
+
+    #if defined(OIDN_COMPILE_SYCL)
+      template<int N>
+      static oidn_inline simd<float, N> forward(simd<float, N> y)
+      {
+        simd<float, N> v0 = a * y;
+        simd<float, N> v  = b * pow(y, c) + d;
+        v.merge(v0, y <= y0);
+        return v;
+      }
+
+      template<int N>
+      static oidn_inline simd<float, N> inverse(simd<float, N> x)
+      {
+        simd<float, N> v0 = x / a;
+        simd<float, N> v  = pow((x - d) / b, 1.f/c);
+        v.merge(v0, x <= x0);
+        return v;
+      }
+    #endif
     };
 
     struct PU
@@ -85,6 +105,30 @@ OIDN_NAMESPACE_BEGIN
         else
           return math::exp((x - g) / e) - f;
       }
+
+    #if defined(OIDN_COMPILE_SYCL)
+      template<int N>
+      static oidn_inline simd<float, N> forward(simd<float, N> y)
+      {
+        simd<float, N> v0 = a * y;
+        simd<float, N> v1 = b * pow(y, c) + d;
+        simd<float, N> v  = e * log(y + f) + g;
+        v.merge(v1, y <= y1);
+        v.merge(v0, y <= y0);
+        return v;
+      }
+
+      template<int N>
+      static oidn_inline simd<float, N> inverse(simd<float, N> x)
+      {
+        simd<float, N> v0 = x / a;
+        simd<float, N> v1 = pow((x - d) / b, 1.f/c);
+        simd<float, N> v  = exp((x - g) / e) - f;
+        v.merge(v1, x <= x1);
+        v.merge(v0, x <= x0);
+        return v;
+      }
+    #endif
     };
 
   #if !defined(OIDN_COMPILE_METAL_DEVICE)
@@ -122,7 +166,8 @@ OIDN_NAMESPACE_BEGIN
       return outputScale;
     }
 
-    oidn_host_device_inline vec3f forward(vec3f y) const
+    template<typename T>
+    oidn_host_device_inline vec3<T> forward(vec3<T> y) const
     {
       switch (type)
       {
@@ -130,20 +175,21 @@ OIDN_NAMESPACE_BEGIN
         return y;
 
       case Type::SRGB:
-        return vec3f(SRGB::forward(y.x), SRGB::forward(y.y), SRGB::forward(y.z));
+        return vec3<T>(SRGB::forward(y.x), SRGB::forward(y.y), SRGB::forward(y.z));
 
       case Type::PU:
-        return vec3f(PU::forward(y.x), PU::forward(y.y), PU::forward(y.z)) * normScale;
+        return vec3<T>(PU::forward(y.x), PU::forward(y.y), PU::forward(y.z)) * normScale;
 
       case Type::Log:
         return math::log(y + 1.f) * normScale;
 
       default:
-        return 0;
+        return T(0.f);
       }
     }
 
-    oidn_host_device_inline vec3f inverse(vec3f x) const
+    template<typename T>
+    oidn_host_device_inline vec3<T> inverse(vec3<T> x) const
     {
       switch (type)
       {
@@ -151,16 +197,16 @@ OIDN_NAMESPACE_BEGIN
         return x;
 
       case Type::SRGB:
-        return vec3f(SRGB::inverse(x.x), SRGB::inverse(x.y), SRGB::inverse(x.z));
+        return vec3<T>(SRGB::inverse(x.x), SRGB::inverse(x.y), SRGB::inverse(x.z));
 
       case Type::PU:
-        return vec3f(PU::inverse(x.x * rcpNormScale), PU::inverse(x.y * rcpNormScale), PU::inverse(x.z * rcpNormScale));
+        return vec3<T>(PU::inverse(x.x * rcpNormScale), PU::inverse(x.y * rcpNormScale), PU::inverse(x.z * rcpNormScale));
 
       case Type::Log:
         return math::exp(x * rcpNormScale) - 1.f;
 
       default:
-        return 0;
+        return T(0.f);
       }
     }
   };

@@ -10,7 +10,7 @@ OIDN_NAMESPACE_BEGIN
   TransferFunction::TransferFunction(Type type)
     : type(type)
   {
-    const float xMax = math::reduce_max(forward(yMax));
+    const float xMax = math::reduce_max(forward(vec3f(yMax)));
     normScale    = 1./xMax;
     rcpNormScale = xMax;
   }

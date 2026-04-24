@@ -69,7 +69,6 @@ endif()
 
 set(OIDN_SYCL_SOURCES_COMMON
   sycl_common.h
-  sycl_conv_xe.h
   sycl_conv.h
   sycl_device.h
   sycl_device.cpp
@@ -78,18 +77,21 @@ set(OIDN_SYCL_SOURCES_COMMON
   sycl_engine.cpp
   sycl_external_buffer.h
   sycl_external_buffer.cpp
+  sycl_input_process.h
+  sycl_output_process.h
   sycl_module.cpp
+  sycl_ops.h
 )
 
 set(OIDN_SYCL_SOURCES_ARCH
-  sycl_conv_xe2.cpp
-  sycl_conv_xehpg.cpp
-  sycl_conv_xelp.cpp
+  sycl_ops_xe2.cpp
+  sycl_ops_xehpg.cpp
+  sycl_ops_xelp.cpp
 )
 
 if(UNIX)
   list(APPEND OIDN_SYCL_SOURCES_ARCH
-    sycl_conv_xehpc.cpp
+    sycl_ops_xehpc.cpp
   )
 endif()
 

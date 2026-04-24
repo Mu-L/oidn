@@ -79,5 +79,14 @@ namespace math {
     return isnan(x) ? 0.f : x;
   }
 
+#if defined(OIDN_COMPILE_SYCL)
+  template<int N>
+  oidn_inline simd<float, N> nan_to_zero(simd<float, N> x)
+  {
+    x.merge(0.f, x != x);
+    return x;
+  }
+#endif
+
 } // namespace math
 OIDN_NAMESPACE_END

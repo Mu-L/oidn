@@ -164,6 +164,8 @@ OIDN_NAMESPACE_BEGIN
   namespace esimdx = sycl::ext::intel::experimental::esimd;
 
   using sycl::half;
+  using namespace esimd;
+  using namespace esimdx;
 #endif
 
 #if !defined(OIDN_COMPILE_METAL_DEVICE)
