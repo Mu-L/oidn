@@ -117,7 +117,9 @@ namespace math {
     }
 
   define_vec_unary_func(log)
+  define_vec_unary_func(log2)
   define_vec_unary_func(exp)
+  define_vec_unary_func(exp2)
   define_vec_unary_func(nan_to_zero)
 
   #undef define_vec_unary_func
@@ -150,6 +152,7 @@ namespace math {
 
   define_vec_binary_func(min)
   define_vec_binary_func(max)
+  define_vec_binary_func(pow)
 
   #undef define_vec_binary_func
 
