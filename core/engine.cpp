@@ -83,19 +83,19 @@ OIDN_NAMESPACE_BEGIN
     return makeRef<DeviceTensor>(buffer, desc, byteOffset);
   }
 
-  bool Engine::isConvSupported(Fusion fusion)
+  bool Engine::isConvSupported(Fusion fusion) const
   {
     return fusion == Fusion::None;
   }
 
-  bool Engine::isConcatConvSupported(Fusion fusion)
-  {
-    return false;
-  }
-
   Ref<ConcatConv> Engine::newConcatConv(const ConcatConvDesc& desc)
   {
-    throw std::logic_error("native concat+conv is not supported by the device");
+    throw std::logic_error("concat+conv operation is not implemented");
+  }
+
+  Ref<ConcatConv2> Engine::newConcatConv2(const ConcatConvDesc& desc)
+  {
+    throw std::logic_error("concat+conv operation is not implemented");
   }
 
   void* Engine::usmAlloc(size_t byteSize, Storage storage)

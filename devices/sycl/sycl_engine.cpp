@@ -34,13 +34,13 @@ OIDN_NAMESPACE_BEGIN
     return makeRef<SYCLExternalBuffer>(this, handleType, handle, name, byteSize);
   }
 
-  bool SYCLEngine::isConvSupported(Fusion fusion)
+  bool SYCLEngine::isConvSupported(Fusion fusion) const
   {
     return fusion == Fusion::None ||
            fusion == Fusion::PoolDst;
   }
 
-  bool SYCLEngine::isConcatConvSupported(Fusion fusion)
+  bool SYCLEngine::isConcatConvSupported(Fusion fusion) const
   {
     return fusion == Fusion::UpsampleSrc0;
   }
@@ -76,7 +76,7 @@ OIDN_NAMESPACE_BEGIN
     #if defined(__linux__)
       return xehpc::newSYCLConcatConv(this, desc);
     #else
-      throw std::logic_error("operation is not implemented");
+      throw std::logic_error("concat+conv operation is not implemented");
     #endif
     case SYCLArchCodepath::Xe2:
       return xe2::newSYCLConcatConv(this, desc);
@@ -85,12 +85,12 @@ OIDN_NAMESPACE_BEGIN
 
   Ref<Pool> SYCLEngine::newPool(const PoolDesc& desc)
   {
-    throw std::logic_error("operation is not implemented");
+    throw std::logic_error("pool operation is not implemented");
   }
 
   Ref<Upsample> SYCLEngine::newUpsample(const UpsampleDesc& desc)
   {
-    throw std::logic_error("operation is not implemented");
+    throw std::logic_error("upsample operation is not implemented");
   }
 
   Ref<Autoexposure> SYCLEngine::newAutoexposure(const ImageDesc& srcDesc)

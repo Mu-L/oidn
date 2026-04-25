@@ -4,8 +4,6 @@
 //#define OIDN_MICROBENCH 1000 // number of microbenchmark iterations
 
 #include "graph.h"
-#include "concat_conv_chw.h"
-#include "concat_conv_hwc.h"
 #include "tensor_reorder.h"
 #if defined(OIDN_MICROBENCH)
   #include "common/timer.h"
@@ -165,9 +163,7 @@ OIDN_NAMESPACE_BEGIN
   {
     Device* device = engine->getDevice();
 
-    const bool fusionSupported = engine->isConcatConvSupported(fusion);
-    if (fusion == Fusion::UpsampleSrc0 && !fusionSupported &&
-        (device->getTensorLayout() != TensorLayout::hwc || !engine->isConvSupported(fusion)))
+    if (!engine->isConcatConvSupported(fusion) && !engine->isConcatConv2Supported(fusion))
     {
       // Need to split into separate upsample and concat+conv
       auto src0Upsample = addUpsample(name + "_upsample0", src0Op);
@@ -206,25 +202,12 @@ OIDN_NAMESPACE_BEGIN
 
     ConcatConvDesc concatConvDesc{src0Desc, src1Desc, finalWeightDesc, finalBiasDesc, activation, fusion, fastMath};
 
-    if (fusionSupported || device->getTensorLayout() != TensorLayout::hwc)
+    if (engine->isConcatConvSupported(fusion))
     {
-      Ref<ConcatConv> concatConv;
-      std::shared_ptr<TensorAlloc> dstAlloc;
-
-      if (fusionSupported)
-      {
-        // Device-specific concat+conv is supported
-        concatConv = engine->newConcatConv(concatConvDesc);
-        dstAlloc = addOp(concatConv, {src0Op, src1Op}, concatConv->getDstDesc());
-      }
-      else
-      {
-        // Generic implicit concat+conv for CHW layout, which requires pre-concatenated source tensors
-        concatConv = makeRef<ConcatConvCHW>(engine, concatConvDesc);
-        dstAlloc = addOp(concatConv, {src0Op, src1Op}, concatConv->getDstDesc(), true);
-      }
-
+      auto concatConv = engine->newConcatConv(concatConvDesc);
       concatConv->setName(name);
+      auto dstAlloc = addOp(concatConv, {src0Op, src1Op}, concatConv->getDstDesc(),
+                            concatConv->isPreConcatConv());
 
       lazyInits.push_back([=]()
       {
@@ -264,10 +247,10 @@ OIDN_NAMESPACE_BEGIN
       privateByteSize += finalWeightDesc.getByteSize() + finalBiasDesc.getByteSize();
       return concatConv;
     }
-    else
+    else if (engine->isConcatConv2Supported(fusion))
     {
-      // For HWC layout use generic concat+conv that splits the convolution per source and sums the results
-      auto concatConv = makeRef<ConcatConvHWC>(engine, concatConvDesc);
+      // Concatenation + convolution is implemented as two separate convolutions
+      auto concatConv = engine->newConcatConv2(concatConvDesc);
       concatConv->setName(name);
       auto dstAlloc = addOp(concatConv, {src0Op, src1Op}, concatConv->getDstDesc());
 
@@ -319,6 +302,10 @@ OIDN_NAMESPACE_BEGIN
                          concatConv->getWeight1Desc().getByteSize() +
                          finalBiasDesc.getByteSize();
       return concatConv;
+    }
+    else
+    {
+      throw std::logic_error("concat+conv operation is not implemented");
     }
   }
 

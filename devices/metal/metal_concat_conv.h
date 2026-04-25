@@ -1,18 +1,18 @@
-// Copyright 2023 Intel Corporation
+// Copyright 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
-#include "core/conv.h"
 #include "metal_engine.h"
+#include "core/concat_conv.h"
 
 OIDN_NAMESPACE_BEGIN
 
-  class MetalConv final : public Conv
+  class MetalConcatConv2 final : public ConcatConv2
   {
   public:
-    MetalConv(MetalEngine* engine, const ConvDesc& desc);
-    ~MetalConv();
+    MetalConcatConv2(MetalEngine* engine, const ConcatConvDesc& desc);
+    ~MetalConcatConv2();
 
     Engine* getEngine() const override { return engine; }
 
@@ -25,8 +25,9 @@ OIDN_NAMESPACE_BEGIN
 
     MetalEngine* engine;
     MPSGraph* mpsGraph = nullptr;
-    MPSGraphTensor* mpsSrc = nullptr;
-    MPSGraphTensor* mpsDst = nullptr;
+    MPSGraphTensor* mpsSrc0 = nullptr;
+    MPSGraphTensor* mpsSrc1 = nullptr;
+    MPSGraphTensor* mpsDst  = nullptr;
   };
 
 OIDN_NAMESPACE_END

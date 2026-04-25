@@ -74,7 +74,9 @@ OIDN_NAMESPACE_BEGIN
     bool isSupported(const TensorDesc& desc) const override;
 
     // Ops
+    bool isConcatConv2Supported(Fusion fusion) const override;
     Ref<Conv> newConv(const ConvDesc& desc) override;
+    Ref<ConcatConv2> newConcatConv2(const ConcatConvDesc& desc) override;
     Ref<Pool> newPool(const PoolDesc& desc) override;
     Ref<Upsample> newUpsample(const UpsampleDesc& desc) override;
     Ref<Autoexposure> newAutoexposure(const ImageDesc& srcDesc) override;

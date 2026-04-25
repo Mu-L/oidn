@@ -15,6 +15,8 @@ set(OIDN_METAL_SOURCES
   metal_device.h
   metal_conv.mm
   metal_conv.h
+  metal_concat_conv.mm
+  metal_concat_conv.h
   metal_engine.mm
   metal_engine.h
   metal_heap.h

@@ -4,6 +4,7 @@
 #include "cuda_engine.h"
 #include "cuda_external_buffer.h"
 #include "cuda_conv.h"
+#include "core/concat_conv.h"
 #include "../gpu/gpu_autoexposure.h"
 #include "../gpu/gpu_input_process.h"
 #include "../gpu/gpu_output_process.h"
@@ -34,6 +35,16 @@ OIDN_NAMESPACE_BEGIN
   {
     // CUTLASS stores tensor strides in 32-bit signed integers
     return Engine::isSupported(desc) && desc.getNumElements() <= INT32_MAX;
+  }
+
+  bool CUDAEngine::isConcatConv2Supported(Fusion fusion) const
+  {
+    return fusion == Fusion::None;
+  }
+
+  Ref<ConcatConv2> CUDAEngine::newConcatConv2(const ConcatConvDesc& desc)
+  {
+    return makeRef<InplaceConcatConv2>(this, desc);
   }
 
   Ref<Conv> CUDAEngine::newConv(const ConvDesc& desc)

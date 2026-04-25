@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "core/conv.h"
+#include "core/concat_conv.h"
 #include "cpu_engine.h"
 #if !defined(OIDN_BNNS)
   #include "cpu_conv.h"
@@ -63,7 +64,7 @@ OIDN_NAMESPACE_BEGIN
       observer.reset();
   }
 
-  bool CPUEngine::isConvSupported(Fusion fusion)
+  bool CPUEngine::isConvSupported(Fusion fusion) const
   {
     if (device->getArch() == CPUArch::AVX512_AMXFP16)
     {
@@ -75,7 +76,7 @@ OIDN_NAMESPACE_BEGIN
       return fusion == Fusion::None;
   }
 
-  bool CPUEngine::isConcatConvSupported(Fusion fusion)
+  bool CPUEngine::isConcatConvSupported(Fusion fusion) const
   {
     if (device->getArch() == CPUArch::AVX512_AMXFP16)
     {
@@ -84,7 +85,7 @@ OIDN_NAMESPACE_BEGIN
              fusion == Fusion::PoolDst;
     }
     else
-      return false;
+      return fusion == Fusion::None;
   }
 
 #if !defined(OIDN_BNNS)
@@ -97,16 +98,17 @@ OIDN_NAMESPACE_BEGIN
   #endif
       return makeRef<CPUConv>(this, desc);
   }
+#endif
 
   Ref<ConcatConv> CPUEngine::newConcatConv(const ConcatConvDesc& desc)
   {
   #if defined(OIDN_ARCH_X64) && !defined(__APPLE__)
-    return makeRef<CPUConcatConvAMX>(this, desc);
-  #else
-    throw std::logic_error("native concat+conv is not supported by the device");
+    if (device->getArch() == CPUArch::AVX512_AMXFP16)
+      return makeRef<CPUConcatConvAMX>(this, desc);
+    else
   #endif
+    return makeRef<PreConcatConvCHW>(this, desc);
   }
-#endif
 
   Ref<Pool> CPUEngine::newPool(const PoolDesc& desc)
   {

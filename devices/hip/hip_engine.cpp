@@ -4,6 +4,7 @@
 #include "hip_engine.h"
 #include "hip_external_buffer.h"
 #include "hip_conv.h"
+#include "core/concat_conv.h"
 #include "../gpu/gpu_autoexposure.h"
 #include "../gpu/gpu_input_process.h"
 #include "../gpu/gpu_output_process.h"
@@ -34,6 +35,16 @@ OIDN_NAMESPACE_BEGIN
   {
     // CK tensors must be smaller than 2GB
     return Engine::isSupported(desc) && desc.getByteSize() <= INT32_MAX;
+  }
+
+  bool HIPEngine::isConcatConv2Supported(Fusion fusion) const
+  {
+    return fusion == Fusion::None;
+  }
+
+  Ref<ConcatConv2> HIPEngine::newConcatConv2(const ConcatConvDesc& desc)
+  {
+    return makeRef<InplaceConcatConv2>(this, desc);
   }
 
   Ref<Conv> HIPEngine::newConv(const ConvDesc& desc)

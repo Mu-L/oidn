@@ -23,6 +23,7 @@ OIDN_NAMESPACE_BEGIN
   class Conv;
   enum class Fusion;
   class ConcatConv;
+  class ConcatConv2;
   class Pool;
   class Upsample;
   class Autoexposure;
@@ -65,10 +66,13 @@ OIDN_NAMESPACE_BEGIN
     virtual Ref<Tensor> newTensor(const Ref<Buffer>& buffer, const TensorDesc& desc, size_t byteOffset = 0);
 
     // Ops
-    virtual bool isConvSupported(Fusion fusion);
-    virtual bool isConcatConvSupported(Fusion fusion);
+    virtual bool isConvSupported(Fusion fusion) const;
+    virtual bool isConcatConvSupported(Fusion fusion) const { return false; }
+    virtual bool isConcatConv2Supported(Fusion fusion) const { return false; }
+
     virtual Ref<Conv> newConv(const ConvDesc& desc) = 0;
     virtual Ref<ConcatConv> newConcatConv(const ConcatConvDesc& desc);
+    virtual Ref<ConcatConv2> newConcatConv2(const ConcatConvDesc& desc);
     virtual Ref<Pool> newPool(const PoolDesc& desc) = 0;
     virtual Ref<Upsample> newUpsample(const UpsampleDesc& desc) = 0;
     virtual Ref<Autoexposure> newAutoexposure(const ImageDesc& srcDesc) = 0;

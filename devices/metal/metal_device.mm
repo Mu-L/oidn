@@ -103,7 +103,7 @@ OIDN_NAMESPACE_BEGIN
       weightDataType = DataType::Float16;
       tensorLayout   = TensorLayout::hwc;
       weightLayout   = TensorLayout::oihw;
-      tensorBlockC   = 1;
+      tensorBlockC   = 1; // no channel padding
 
       minTileAlignment = 32; // MPS convolution seems to require this for consistent output
 

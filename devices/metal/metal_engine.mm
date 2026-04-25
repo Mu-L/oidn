@@ -6,6 +6,7 @@
 #include "metal_heap.h"
 #include "metal_buffer.h"
 #include "metal_conv.h"
+#include "metal_concat_conv.h"
 #include "devices/metal/metal_kernels.h" // generated
 #include "../gpu/gpu_autoexposure.h"
 #include "../gpu/gpu_input_process.h"
@@ -104,16 +105,27 @@ OIDN_NAMESPACE_BEGIN
       return makeRef<DeviceTensor>(buffer, desc, byteOffset);
   }
 
-  bool MetalEngine::isConvSupported(Fusion fusion)
+  bool MetalEngine::isConvSupported(Fusion fusion) const
   {
     return fusion == Fusion::None ||
            fusion == Fusion::UpsampleSrc0 ||
            fusion == Fusion::PoolDst;
   }
 
+  bool MetalEngine::isConcatConv2Supported(Fusion fusion) const
+  {
+    return fusion == Fusion::None ||
+           fusion == Fusion::UpsampleSrc0;
+  }
+
   Ref<Conv> MetalEngine::newConv(const ConvDesc& desc)
   {
     return makeRef<MetalConv>(this, desc);
+  }
+
+  Ref<ConcatConv2> MetalEngine::newConcatConv2(const ConcatConvDesc& desc)
+  {
+    return makeRef<MetalConcatConv2>(this, desc);
   }
 
   Ref<Pool> MetalEngine::newPool(const PoolDesc& desc)

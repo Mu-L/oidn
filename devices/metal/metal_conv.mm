@@ -29,16 +29,18 @@ OIDN_NAMESPACE_BEGIN
   {
     if (mpsGraph)
       throw std::logic_error("convolution bias cannot be set after finalization");
+    if (bias->getBuffer())
+      throw std::invalid_argument("convolution bias must be a host tensor");
   }
 
   void MetalConv::finalize()
   {
     mpsGraph = [[MPSGraph alloc] init];
 
-    mpsSrc    = toMPSGraphPlaceholder(mpsGraph, srcDesc);
-    mpsWeight = toMPSGraphConst(mpsGraph, weight);
-    mpsBias   = bias->getBuffer() ? toMPSGraphPlaceholder(mpsGraph, biasDesc)
-                                  : toMPSGraphConst(mpsGraph, bias);
+    mpsSrc = toMPSGraphPlaceholder(mpsGraph, srcDesc);
+
+    MPSGraphTensor* mpsWeight = toMPSGraphConst(mpsGraph, weight);
+    MPSGraphTensor* mpsBias   = toMPSGraphConst(mpsGraph, bias);
 
     MPSGraphTensor* mpsConvSrc = mpsSrc;
     if (fusion == Fusion::UpsampleSrc0)
@@ -100,26 +102,11 @@ OIDN_NAMESPACE_BEGIN
     MPSGraphTensorData* mpsSrcData = newMPSGraphTensorData(src);
     MPSGraphTensorData* mpsDstData = newMPSGraphTensorData(dst);
 
-    if (bias->getBuffer())
-    {
-      MPSGraphTensorData* mpsBiasData = newMPSGraphTensorData(bias);
-
-      [mpsGraph encodeToCommandBuffer: commandBuffer
-                                feeds: @{mpsSrc: mpsSrcData, mpsBias: mpsBiasData}
-                     targetOperations: nil
-                    resultsDictionary: @{mpsDst: mpsDstData}
-                  executionDescriptor: nil];
-
-      [mpsBiasData release];
-    }
-    else
-    {
-      [mpsGraph encodeToCommandBuffer: commandBuffer
-                                feeds: @{mpsSrc: mpsSrcData}
-                     targetOperations: nil
-                    resultsDictionary: @{mpsDst: mpsDstData}
-                  executionDescriptor: nil];
-    }
+    [mpsGraph encodeToCommandBuffer: commandBuffer
+                              feeds: @{mpsSrc: mpsSrcData}
+                   targetOperations: nil
+                  resultsDictionary: @{mpsDst: mpsDstData}
+                executionDescriptor: nil];
 
     [mpsSrcData release];
     [mpsDstData release];
