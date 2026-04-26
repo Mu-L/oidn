@@ -3,8 +3,8 @@ Version History
 
 ### Changes in v2.5.0:
 
--   Improve performance and reduce memory usage for Intel GPUs with XMX support
-    and CPUs with AMX-FP16 support
+-   Significantly improved performance and reduce memory usage on Intel GPUs with
+    XMX support and CPUs with AMX-FP16 support
 -   Fixed corrupted output on Apple M5 Pro/Max GPUs using Metal
 
 ### Changes in v2.4.1:
