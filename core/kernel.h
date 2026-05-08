@@ -190,7 +190,7 @@ OIDN_NAMESPACE_BEGIN
     template<typename T>
     oidn_device_inline void subgroupStore(GlobalPtr<T> dst, const T& x) const
     {
-      item.get_sub_group().store(dst, x);
+      sycl::ext::oneapi::experimental::group_store(item.get_sub_group(), x, dst.get());
     }
 
     oidn_device_inline void subgroupBarrier() const
