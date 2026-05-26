@@ -78,7 +78,8 @@ if re.match('msvc[0-9]+', cfg.compiler):
   msvc_arch = {'x86_64': 'x64', 'arm64': 'ARM64'}[ARCH]
   config_cmd += {'msvc15' :  ' -G "Visual Studio 15 2017 Win64"',
                  'msvc16' : f' -G "Visual Studio 16 2019" -A {msvc_arch}',
-                 'msvc17' : f' -G "Visual Studio 17 2022" -A {msvc_arch}'}[cfg.compiler]
+                 'msvc17' : f' -G "Visual Studio 17 2022" -A {msvc_arch}',
+                 'msvc18' : f' -G "Visual Studio 18 2026" -A {msvc_arch}'}[cfg.compiler]
 else:
   msbuild = False
   if OS != 'macos':
@@ -228,25 +229,13 @@ if cfg.target == 'package':
     for filename in binaries:
       check_symbols_linux(filename)
 
-  # Sign the binaries
-  sign_tool = None
-  if cfg.sign:
-    if OS == 'windows':
-      sign_tool = os.environ.get('SIGN_FILE_WINDOWS')
-      if not sign_tool:
-        raise Exception('SIGN_FILE_WINDOWS environment variable not set')
-      sign_tool_cmd = f'{sign_tool} -q -vv'
-    if sign_tool:
-      for filename in binaries:
-        run(f'{sign_tool_cmd} {filename}')
-
   # Make the binaries consistently executable
   if OS != 'windows':
     for filename in binaries:
       run(f'chmod +x {filename}')
 
   # Repack
-  if sign_tool or OS != 'windows':
+  if OS != 'windows':
     os.remove(package_filename)
     create_package(package_filename, package_dir)
 

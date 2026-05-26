@@ -1379,14 +1379,6 @@ jobs:
       artifact-path: build install
       cmd: python scripts/build.py install --compiler icx --full
 
-  build-windows-msvc15:
-    secrets: inherit
-    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/windows.yml@main
-    with:
-      project: oidn
-      runs-on: '[ "Windows", "build" ]'
-      cmd: python scripts/build.py install --compiler msvc15
-
   build-windows-msvc16:
     secrets: inherit
     uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/windows.yml@main
@@ -1458,6 +1450,24 @@ jobs:
       artifact-out: build-windows-arm-msvc17-debug
       artifact-path: build install
       cmd: python scripts/build.py install --compiler msvc17 --config Debug
+
+  build-windows-msvc18:
+    secrets: inherit
+    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/windows.yml@main
+    with:
+      project: oidn
+      runs-on: '[ "Windows", "build" ]'
+      artifact-out: build-windows-msvc18
+      artifact-path: build install
+      cmd: python scripts/build.py install --compiler msvc18
+
+  build-windows-msvc18-debug:
+    secrets: inherit
+    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/windows.yml@main
+    with:
+      project: oidn
+      runs-on: '[ "Windows", "build" ]'
+      cmd: python scripts/build.py --compiler msvc18 --config Debug
 
   test-windows-avx2:
     needs: build-windows
