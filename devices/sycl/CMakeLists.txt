@@ -20,7 +20,14 @@ endif()
 # Check the DPC++ compiler
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   include(CheckCXXCompilerFlag)
+  # Newer DPC++ compilers require C++17 or later with -fsycl, but the global
+  # CMAKE_CXX_STANDARD is 11; temporarily override it so the flag check compiles
+  # with -std=c++17 rather than -std=c++11.
+  set(_oidn_saved_cxx_standard ${CMAKE_CXX_STANDARD})
+  set(CMAKE_CXX_STANDARD 17)
   check_cxx_compiler_flag(-fsycl OIDN_DEVICE_SYCL_SUPPORTED)
+  set(CMAKE_CXX_STANDARD ${_oidn_saved_cxx_standard})
+  unset(_oidn_saved_cxx_standard)
   if(NOT OIDN_DEVICE_SYCL_SUPPORTED)
     message(FATAL_ERROR "Building with SYCL support requires oneAPI DPC++ Compiler as the C/C++ compiler")
   endif()
