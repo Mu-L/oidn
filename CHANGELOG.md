@@ -6,6 +6,9 @@ Version History
 -   Significantly improved performance and reduced memory usage on Intel GPUs
     with XMX support and CPUs with AMX-FP16 support
 -   Fixed corrupted output on Apple M5 Pro/Max GPUs using Metal
+-   Fixed device detection failure or crash on Windows if some old Intel
+    integrated GPU drivers are installed (fix requires building with oneAPI
+    DPC++ Compiler 6.1.0)
 
 ### Changes in v2.4.1:
 

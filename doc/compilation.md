@@ -51,8 +51,10 @@ prerequisites are needed:
 
 -   oneAPI DPC++ Compiler, one of the following versions (other versions might
     work as well but have *not* been validated with Intel Open Image Denoise):
-    -   [oneAPI DPC++ Compiler 6.2.1](https://github.com/intel/llvm/releases/tag/v6.2.1).
-        This is the open source version of the compiler.
+    -   [oneAPI DPC++ Compiler 6.1.0](https://github.com/intel/llvm/releases/tag/v6.1.0).
+        This is the open source version of the compiler. Versions 6.2.x and
+        6.3.0 may cause crashes or device detection failures on Windows so it
+        is highly recommended to avoid these.
     -   [Intel® oneAPI DPC++/C++ Compiler](https://www.intel.com/content/www/us/en/developer/tools/oneapi/dpc-compiler.html)
         2025.3 or newer
 
