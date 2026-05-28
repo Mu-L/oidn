@@ -33,7 +33,7 @@ def check_symbols_linux(filename):
   check_symbols(filename, 'CXXABI',  (1, 3, 11))
 
 # Parse the arguments
-compilers = {'windows' : ['msvc17', 'msvc16', 'msvc15', 'clang', 'icx'],
+compilers = {'windows' : ['msvc18', 'msvc17', 'msvc16', 'msvc15', 'clang', 'icx'],
              'linux'   : ['gcc', 'clang', 'icx'],
              'macos'   : ['clang']}
 
