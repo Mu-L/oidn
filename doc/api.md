@@ -89,7 +89,7 @@ simple example code snippets.
     oidn::BufferRef albedoBuf = ...
 
     // Create a filter for denoising a beauty (color) image using optional auxiliary images too
-    // This can be an expensive operation, so try no to create a new filter for every image!
+    // This can be an expensive operation, so try not to create a new filter for every image!
     oidn::FilterRef filter = device.newFilter("RT"); // generic ray tracing filter
     filter.setImage("color",  colorBuf,  oidn::Format::Float3, width, height); // beauty
     filter.setImage("albedo", albedoBuf, oidn::Format::Float3, width, height); // auxiliary
@@ -182,7 +182,7 @@ much as possible:
     directly passed to filters as image parameters instead of the original
     pointers using `oidnSetFilterImage`.
 
--   Data should be copied asynchronously using using the new
+-   Data should be copied asynchronously using the new
     `oidnReadBufferAsync` and `oidnWriteBufferAsync` functions, which may
     achieve higher performance than plain `memcpy`.
 
@@ -209,7 +209,7 @@ allocated using the native allocator of the respective compute API (e.g.
 `sycl::malloc_device`, `cudaMalloc`) instead of using buffers. This way, it is
 the responsibility of the user to correctly allocate the memory for the device.
 
-In such cases, it often necessary to have more control over the device creation
+In such cases, it is often necessary to have more control over the device creation
 as well, to ensure that filtering is running on the intended device and command
 queues or streams from the application can be shared to improve performance. If
 the application is using the same compute or graphics API as the Open Image
@@ -272,7 +272,7 @@ Open Image Denoise 2 introduces a simple *physical device* API, which
 enables the application to query the list of supported physical devices in the
 system, including their name, type, UUID, LUID, PCI address, etc. (see
 `oidnGetNumPhysicalDevices`, `oidnGetPhysicalDeviceString`, etc.). New logical
-device (i.e. `OIDNDevice`) creation functions for have been also introduced, which
+device (i.e. `OIDNDevice`) creation functions have also been introduced, which
 enable creating a logical device on a specific physical device:
 `oidnNewDeviceByID`, `oidnNewDeviceByUUID`, etc.
 
@@ -324,7 +324,7 @@ library design that was necessary for adding multi-vendor GPU support. If the
 library is built with GPU support as well, the `OIDN_STATIC_LIB` option is still
 available but enabling it results in a hybrid static/shared library.
 
-If the main reason for building as a static library would be is the ability to
+If the main reason for building as a static library is the ability to
 use multiple versions of Open Image Denoise in the same process, please use the
 existing `OIDN_API_NAMESPACE` CMake option instead. With this feature all
 symbols of the library will be put into a custom namespace, which can prevent
@@ -965,7 +965,7 @@ types are documented later in this section.
 
 Creating filter objects can be very expensive, therefore it is *strongly*
 recommended to reuse the same filter for denoising as many images as possible,
-as long as the these images have the same same size, format, and features (i.e.,
+as long as these images have the same size, format, and features (i.e.,
 only the memory locations and pixel values may be different). Otherwise (e.g.
 for images with different resolutions), reusing the same filter would not have
 any benefits.

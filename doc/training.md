@@ -160,7 +160,7 @@ auxiliary features used for inference will be either originally noise-free or
 prefiltered with separately trained auxiliary feature denoising models. If
 inference will be done only with prefiltered features, even higher quality can
 be achieved by training with prefiltered features instead of the reference
-onces. This can be achieved by first training the auxiliary feature models and
+ones. This can be achieved by first training the auxiliary feature models and
 then specifying the list of these results when preprocessing the dataset for
 the main feature (`--aux_results` or `-a` option).
 
@@ -241,7 +241,7 @@ script, e.g.:
 
     ./visualize.py --result rt_hdr_alb
 
-Training is performed with mixed precision (FP16 and FP32) by default, if it
+Training is performed with mixed precision (FP16 and FP32) by default, if it is
 supported by the hardware, which makes training faster and use less memory.
 However, in some rare cases this might cause some convergence issues. The
 training precision can be manually set to FP32 if necessary (`--precision` or

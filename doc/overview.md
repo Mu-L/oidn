@@ -102,7 +102,7 @@ For NVIDIA GPU support, please also install the latest
 For AMD GPU support, please also install the latest
 [AMD graphics drivers](https://www.amd.com/en/support):
 
--   Windows: AMD Software: Adrenalin Edition 25.3.1 or newer
+-   Windows: AMD Software: Adrenalin Edition 25.30.02.01 or newer
 
 -   Linux: [Radeon Software for Linux](https://www.amd.com/en/support/download/linux-drivers.html)
     version 25.30.1 or newer
