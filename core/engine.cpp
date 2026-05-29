@@ -45,18 +45,49 @@ OIDN_NAMESPACE_BEGIN
       "creating a shared buffer from a native handle is not supported by the device");
   }
 
-  Ref<Buffer> Engine::newExternalBuffer(ExternalMemoryTypeFlag fdType,
+  Ref<Buffer> Engine::newExternalBuffer(ExternalMemoryTypeFlags fdType,
                                         int fd, size_t byteSize)
   {
     throw Exception(Error::InvalidOperation,
       "creating a shared buffer from a POSIX file descriptor is not supported by the device");
   }
 
-  Ref<Buffer> Engine::newExternalBuffer(ExternalMemoryTypeFlag handleType,
+  Ref<Buffer> Engine::newExternalBuffer(ExternalMemoryTypeFlags handleType,
                                         void* handle, const void* name, size_t byteSize)
   {
     throw Exception(Error::InvalidOperation,
       "creating a shared buffer from a Win32 handle is not supported by the device");
+  }
+
+  Ref<Semaphore> Engine::newExternalSemaphore(ExternalSemaphoreTypeFlags fdType,
+                                              int fd)
+  {
+    throw Exception(Error::InvalidOperation,
+      "creating a shared semaphore from a POSIX file descriptor is not supported by the device");
+  }
+
+  Ref<Semaphore> Engine::newExternalSemaphore(ExternalSemaphoreTypeFlags handleType,
+                                              void* handle, const void* name)
+  {
+    throw Exception(Error::InvalidOperation,
+      "creating a shared semaphore from a Win32 handle is not supported by the device");
+  }
+
+  void Engine::submitSignalSemaphores(Semaphore* const* semaphores,
+                                      const uint64_t* values,
+                                      int numSemaphores)
+  {
+    throw Exception(Error::InvalidOperation,
+      "signaling semaphores is not supported by the device");
+  }
+
+  void Engine::submitWaitSemaphores(Semaphore* const* semaphores,
+                                    const uint64_t* values,
+                                    const uint32_t* timeoutsMs,
+                                    int numSemaphores)
+  {
+    throw Exception(Error::InvalidOperation,
+      "waiting on semaphores is not supported by the device");
   }
 
   bool Engine::isSupported(const TensorDesc& desc) const

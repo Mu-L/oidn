@@ -3,6 +3,7 @@
 
 #include "cuda_engine.h"
 #include "cuda_external_buffer.h"
+#include "cuda_external_semaphore.h"
 #include "cuda_conv.h"
 #include "core/concat_conv.h"
 #include "../gpu/gpu_autoexposure.h"
@@ -19,16 +20,122 @@ OIDN_NAMESPACE_BEGIN
     : device(device),
       stream(stream) {}
 
-  Ref<Buffer> CUDAEngine::newExternalBuffer(ExternalMemoryTypeFlag fdType,
+  Ref<Buffer> CUDAEngine::newExternalBuffer(ExternalMemoryTypeFlags fdType,
                                             int fd, size_t byteSize)
   {
     return makeRef<CUDAExternalBuffer>(this, fdType, fd, byteSize);
   }
 
-  Ref<Buffer> CUDAEngine::newExternalBuffer(ExternalMemoryTypeFlag handleType,
+  Ref<Buffer> CUDAEngine::newExternalBuffer(ExternalMemoryTypeFlags handleType,
                                             void* handle, const void* name, size_t byteSize)
   {
     return makeRef<CUDAExternalBuffer>(this, handleType, handle, name, byteSize);
+  }
+
+  Ref<Semaphore> CUDAEngine::newExternalSemaphore(ExternalSemaphoreTypeFlags fdType,
+                                                  int fd)
+  {
+    return makeRef<CUDAExternalSemaphore>(this, fdType, fd);
+  }
+
+  Ref<Semaphore> CUDAEngine::newExternalSemaphore(ExternalSemaphoreTypeFlags handleType,
+                                                  void* handle, const void* name)
+  {
+    return makeRef<CUDAExternalSemaphore>(this, handleType, handle, name);
+  }
+
+  void CUDAEngine::submitSignalSemaphores(Semaphore* const* semaphores,
+                                          const uint64_t* values,
+                                          int numSemaphores)
+  {
+    if (numSemaphores < 0)
+      throw Exception(Error::InvalidArgument, "number of semaphores is negative");
+    if (numSemaphores == 0)
+      return;
+    if (semaphores == nullptr)
+      throw Exception(Error::InvalidArgument, "semaphores pointer is null");
+
+    semaphoreHandles.resize(numSemaphores);
+    semaphoreSignalParams.resize(numSemaphores);
+
+    for (int i = 0; i < numSemaphores; ++i)
+    {
+      if (semaphores[i] == nullptr)
+        throw Exception(Error::InvalidArgument, "semaphore is null");
+      if (semaphores[i]->getDevice() != getDevice())
+        throw Exception(Error::InvalidArgument, "semaphore was created on a different device");
+
+      CUDAExternalSemaphore* cudaSemaphore = reinterpret_cast<CUDAExternalSemaphore*>(semaphores[i]);
+      ExternalSemaphoreTypeFlags type = cudaSemaphore->getType();
+
+      semaphoreHandles[i] = cudaSemaphore->getHandle();
+
+      semaphoreSignalParams[i] = {};
+      if (values != nullptr)
+      {
+        if (type == ExternalSemaphoreTypeFlag::KeyedMutex ||
+            type == ExternalSemaphoreTypeFlag::KeyedMutexKMT)
+          semaphoreSignalParams[i].params.keyedMutex.key = values[i];
+        else
+          semaphoreSignalParams[i].params.fence.value = values[i];
+      }
+    }
+
+    checkError(cudaSignalExternalSemaphoresAsync(
+      semaphoreHandles.data(),
+      semaphoreSignalParams.data(),
+      numSemaphores,
+      stream));
+  }
+
+  void CUDAEngine::submitWaitSemaphores(Semaphore* const* semaphores,
+                                        const uint64_t* values,
+                                        const uint32_t* timeoutsMs,
+                                        int numSemaphores)
+  {
+    if (numSemaphores < 0)
+      throw Exception(Error::InvalidArgument, "number of semaphores is negative");
+    if (numSemaphores == 0)
+      return;
+    if (semaphores == nullptr)
+      throw Exception(Error::InvalidArgument, "semaphores pointer is null");
+
+    semaphoreHandles.resize(numSemaphores);
+    semaphoreWaitParams.resize(numSemaphores);
+
+    for (int i = 0; i < numSemaphores; ++i)
+    {
+      if (semaphores[i] == nullptr)
+        throw Exception(Error::InvalidArgument, "semaphore is null");
+      if (semaphores[i]->getDevice() != getDevice())
+        throw Exception(Error::InvalidArgument, "semaphore was created on a different device");
+
+      CUDAExternalSemaphore* cudaSemaphore = reinterpret_cast<CUDAExternalSemaphore*>(semaphores[i]);
+      ExternalSemaphoreTypeFlags type = cudaSemaphore->getType();
+
+      semaphoreHandles[i] = cudaSemaphore->getHandle();
+
+      semaphoreWaitParams[i] = {};
+      if (type == ExternalSemaphoreTypeFlag::KeyedMutex ||
+          type == ExternalSemaphoreTypeFlag::KeyedMutexKMT)
+      {
+        if (values != nullptr)
+          semaphoreWaitParams[i].params.keyedMutex.key = values[i];
+        if (timeoutsMs != nullptr)
+          semaphoreWaitParams[i].params.keyedMutex.timeoutMs = timeoutsMs[i];
+      }
+      else
+      {
+        if (values != nullptr)
+          semaphoreWaitParams[i].params.fence.value = values[i];
+      }
+    }
+
+    checkError(cudaWaitExternalSemaphoresAsync(
+      semaphoreHandles.data(),
+      semaphoreWaitParams.data(),
+      numSemaphores,
+      stream));
   }
 
   bool CUDAEngine::isSupported(const TensorDesc& desc) const

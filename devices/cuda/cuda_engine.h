@@ -64,14 +64,30 @@ OIDN_NAMESPACE_BEGIN
     cudaStream_t getCUDAStream() const { return stream; }
 
     // Buffer
-    Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlag fdType,
+    Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlags fdType,
                                   int fd, size_t byteSize) override;
 
-    Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlag handleType,
+    Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlags handleType,
                                   void* handle, const void* name, size_t byteSize) override;
 
     // Tensor
     bool isSupported(const TensorDesc& desc) const override;
+
+    // Semaphore
+    Ref<Semaphore> newExternalSemaphore(ExternalSemaphoreTypeFlags fdType,
+                                        int fd) override;
+
+    Ref<Semaphore> newExternalSemaphore(ExternalSemaphoreTypeFlags handleType,
+                                        void* handle, const void* name) override;
+
+    void submitSignalSemaphores(Semaphore* const* semaphores,
+                                const uint64_t* values,
+                                int numSemaphores) override;
+
+    void submitWaitSemaphores(Semaphore* const* semaphores,
+                              const uint64_t* values,
+                              const uint32_t* timeoutsMs,
+                              int numSemaphores) override;
 
     // Ops
     bool isConcatConv2Supported(Fusion fusion) const override;
@@ -142,6 +158,11 @@ OIDN_NAMESPACE_BEGIN
 
     CUDADevice* device;
     cudaStream_t stream;
+
+    // Temporary storage for semaphore handles and params
+    std::vector<cudaExternalSemaphore_t>           semaphoreHandles;
+    std::vector<cudaExternalSemaphoreSignalParams> semaphoreSignalParams;
+    std::vector<cudaExternalSemaphoreWaitParams>   semaphoreWaitParams;
   };
 
 OIDN_NAMESPACE_END

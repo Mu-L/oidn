@@ -9,6 +9,7 @@
 #include "heap.h"
 #include "buffer.h"
 #include "image.h"
+#include "semaphore.h"
 #include "progress.h"
 
 OIDN_NAMESPACE_BEGIN
@@ -54,16 +55,31 @@ OIDN_NAMESPACE_BEGIN
 
     virtual Ref<Buffer> newNativeBuffer(void* handle);
 
-    virtual Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlag fdType,
+    virtual Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlags fdType,
                                           int fd, size_t byteSize);
 
-    virtual Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlag handleType,
+    virtual Ref<Buffer> newExternalBuffer(ExternalMemoryTypeFlags handleType,
                                           void* handle, const void* name, size_t byteSize);
-
     // Tensor
     virtual bool isSupported(const TensorDesc& desc) const;
     virtual Ref<Tensor> newTensor(const TensorDesc& desc, Storage storage = Storage::Device);
     virtual Ref<Tensor> newTensor(const Ref<Buffer>& buffer, const TensorDesc& desc, size_t byteOffset = 0);
+
+    // Semaphore
+    virtual Ref<Semaphore> newExternalSemaphore(ExternalSemaphoreTypeFlags fdType,
+                                                int fd);
+
+    virtual Ref<Semaphore> newExternalSemaphore(ExternalSemaphoreTypeFlags handleType,
+                                                void* handle, const void* name);
+
+    virtual void submitSignalSemaphores(Semaphore* const* semaphores,
+                                        const uint64_t* values,
+                                        int numSemaphores);
+
+    virtual void submitWaitSemaphores(Semaphore* const* semaphores,
+                                      const uint64_t* values,
+                                      const uint32_t* timeoutsMs,
+                                      int numSemaphores);
 
     // Ops
     virtual bool isConvSupported(Fusion fusion) const;

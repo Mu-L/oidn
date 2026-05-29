@@ -5,6 +5,13 @@ Version History
 
 -   Significantly improved performance and reduced memory usage on Intel GPUs
     with XMX support and CPUs with AMX-FP16 support
+-   Added API for importing external semaphores from graphics APIs (e.g. Vulkan,
+    Direct3D 12). Currently this is supported only by CUDA (Windows and Linux)
+    and HIP (Windows only) devices. SYCL device support will be added in a
+    future version
+-   Added the `OIDN_EXTERNAL_MEMORY_TYPE_FLAG_DEDICATED` flag which must be
+    combined with the handle type flag when importing external memory with
+    dedicated allocation
 -   Fixed corrupted output on Apple M5 Pro/Max GPUs using Metal
 -   Fixed device detection failure or crash on Windows if some old Intel
     integrated GPU drivers are installed (fix requires building with oneAPI

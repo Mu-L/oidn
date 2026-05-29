@@ -466,6 +466,8 @@ OIDN_NAMESPACE_BEGIN
     #else
       externalMemoryTypes = ExternalMemoryTypeFlag::DMABuf;
     #endif
+
+      externalMemoryTypes |= ExternalMemoryTypeFlag::Dedicated;
     }
   }
 
