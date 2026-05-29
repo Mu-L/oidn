@@ -28,6 +28,17 @@ include(oidn_common_external)
 set(GPU_TARGETS "gfx902,gfx909,gfx90c,gfx1030,gfx1031,gfx1032,gfx1033,gfx1034,gfx1035,gfx1036,gfx1100,gfx1101,gfx1102,gfx1103,gfx1150,gfx1151,gfx1152,gfx1200,gfx1201" CACHE INTERNAL "")
 set(AMDGPU_TARGETS ${GPU_TARGETS} CACHE INTERNAL "")
 
+# Enable parallel Clang jobs per source file: Clang generates code for each GPU
+# ISA target in parallel, which significantly speeds up HIP compilation.
+# Defaults to the number of logical CPU cores; set to 1 to disable.
+if(NOT DEFINED HIP_CLANG_NUM_PARALLEL_JOBS)
+  include(ProcessorCount)
+  ProcessorCount(HIP_CLANG_NUM_PARALLEL_JOBS)
+  if(HIP_CLANG_NUM_PARALLEL_JOBS EQUAL 0)
+    set(HIP_CLANG_NUM_PARALLEL_JOBS 1)
+  endif()
+endif()
+
 # Find HIP
 find_package(hip REQUIRED)
 
