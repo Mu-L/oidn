@@ -147,7 +147,7 @@ OIDN_NAMESPACE_BEGIN
     }
 
     // Clear the HIP error state
-    hipGetLastError();
+    (void)hipGetLastError();
   }
 
   void HIPDevice::leave()

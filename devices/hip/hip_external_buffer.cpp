@@ -92,9 +92,9 @@ OIDN_NAMESPACE_BEGIN
   HIPExternalBuffer::~HIPExternalBuffer()
   {
   #if HIP_VERSION_MAJOR >= 6
-    hipFree(ptr);
+    (void)hipFree(ptr);
   #endif
-    hipDestroyExternalMemory(extMem);
+    (void)hipDestroyExternalMemory(extMem);
   }
 
 OIDN_NAMESPACE_END

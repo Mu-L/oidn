@@ -52,7 +52,7 @@ OIDN_NAMESPACE_BEGIN
 
   HIPExternalSemaphore::~HIPExternalSemaphore()
   {
-    hipDestroyExternalSemaphore(extSem);
+    (void)hipDestroyExternalSemaphore(extSem);
   }
 
 OIDN_NAMESPACE_END
