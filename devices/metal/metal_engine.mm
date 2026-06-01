@@ -198,18 +198,21 @@ OIDN_NAMESPACE_BEGIN
 
   Ref<MetalPipeline> MetalEngine::newPipeline(const std::string& kernelName)
   {
-    auto function = [[library newFunctionWithName: @(kernelName.c_str())] autorelease];
-    if (!function)
-      throw std::runtime_error("could not create Metal library function");
+    @autoreleasepool
+    {
+      auto function = [[library newFunctionWithName: @(kernelName.c_str())] autorelease];
+      if (!function)
+        throw std::runtime_error("could not create Metal library function");
 
-    NSError* error = nullptr;
-    auto pipelineState = [device->getMTLDevice() newComputePipelineStateWithFunction: function
-                                                                               error: &error];
+      NSError* error = nullptr;
+      auto pipelineState = [device->getMTLDevice() newComputePipelineStateWithFunction: function
+                                                                                 error: &error];
 
-    if (!pipelineState)
-      throw std::runtime_error("could not create Metal compute pipeline state");
+      if (!pipelineState)
+        throw std::runtime_error("could not create Metal compute pipeline state");
 
-    return makeRef<MetalPipeline>(pipelineState);
+      return makeRef<MetalPipeline>(pipelineState);
+    }
   }
 
   void MetalEngine::flush()
