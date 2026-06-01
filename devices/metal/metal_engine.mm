@@ -161,12 +161,36 @@ OIDN_NAMESPACE_BEGIN
   void MetalEngine::submitHostFunc(std::function<void()>&& f, const Ref<CancellationToken>& ct)
   {
     auto fPtr = new std::function<void()>(std::move(f));
+    HostFuncState* state = &hostFuncState;
 
+    // Register the host function as outstanding
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      ++state->numOutstanding;
+    }
+
+    // Submit a command buffer with a completion handler that will run the host function on a background thread
     auto commandBuffer = getMTLCommandBuffer();
     [commandBuffer addCompletedHandler: ^(id<MTLCommandBuffer> commandBuffer)
     {
       std::unique_ptr<std::function<void()>> fSmartPtr(fPtr);
+
+      // Acquire the mutex once to synchronize with the submitting thread, which released it after
+      // constructing the function. This publishes the function to this thread so it can be run
+      // safely below, without holding the lock across the call.
+      {
+        std::lock_guard<std::mutex> lock(state->mutex);
+      }
+
+      // Call the host function
       (*fSmartPtr)();
+
+      // Mark the host function as finished and wake up any thread waiting in wait()
+      {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (--state->numOutstanding == 0)
+          state->cond.notify_all();
+      }
     }];
 
     flush();
@@ -202,6 +226,13 @@ OIDN_NAMESPACE_BEGIN
       [commandBuffer waitUntilCompleted];
       [commandBuffer release];
       commandBuffer = nullptr;
+    }
+
+    // Wait until all submitted host functions (completion handlers) have finished running on their
+    // background threads, so their effects are complete and synchronized before returning
+    {
+      std::unique_lock<std::mutex> lock(hostFuncState.mutex);
+      hostFuncState.cond.wait(lock, [&] { return hostFuncState.numOutstanding == 0; });
     }
   }
 
