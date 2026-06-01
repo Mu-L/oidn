@@ -45,7 +45,7 @@ OIDN_NAMESPACE_BEGIN
     void init() override;
 
   private:
-    id<MTLDevice> device;
+    id<MTLDevice> device = nil;
     id<MTLCommandQueue> userCommandQueue = nil; // user-provided command queue (optional)
   };
 

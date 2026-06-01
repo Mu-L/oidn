@@ -63,7 +63,7 @@ OIDN_NAMESPACE_BEGIN
   }
 
   MetalDevice::MetalDevice(const Ref<MetalPhysicalDevice>& physicalDevice)
-    : device(physicalDevice->device)
+    : device([physicalDevice->device retain])
   {}
 
   MetalDevice::MetalDevice(id<MTLCommandQueue> commandQueue)
@@ -71,7 +71,7 @@ OIDN_NAMESPACE_BEGIN
     if (!commandQueue)
       throw Exception(Error::InvalidArgument, "Metal command queue is null");
 
-    device = commandQueue.device;
+    device = [commandQueue.device retain];
     userCommandQueue = commandQueue;
   }
 
