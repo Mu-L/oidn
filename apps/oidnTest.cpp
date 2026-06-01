@@ -8,6 +8,9 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <atomic>
+#include <cstdlib>
+#include <string>
 
 #define CATCH_CONFIG_RUNNER
 #define CATCH_CONFIG_FAST_COMPILE
@@ -138,6 +141,120 @@ TEST_CASE("device creation", "[device]")
   SECTION("commit")
   {
     device.commit();
+    REQUIRE(device.getError() == Error::None);
+  }
+}
+
+// -------------------------------------------------------------------------------------------------
+
+TEST_CASE("device parameters", "[device_params]")
+{
+  DeviceRef device = makeAndCommitDevice();
+
+  SECTION("version")
+  {
+    const int version = device.get<int>("version");
+    const int major   = device.get<int>("versionMajor");
+    const int minor   = device.get<int>("versionMinor");
+    const int patch   = device.get<int>("versionPatch");
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(version == OIDN_VERSION);
+    REQUIRE(version == major * 10000 + minor * 100 + patch);
+  }
+
+  SECTION("type")
+  {
+    const DeviceType type = device.get<DeviceType>("type");
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(type != DeviceType::Default);
+  }
+
+  SECTION("capability queries")
+  {
+    // These must be queryable without error; the actual values are device-dependent
+    device.get<bool>("systemMemorySupported");
+    device.get<bool>("managedMemorySupported");
+    device.get<int>("externalMemoryTypes");
+    device.get<int>("externalSemaphoreTypes");
+    REQUIRE(device.getError() == Error::None);
+  }
+
+  SECTION("verbose round-trip")
+  {
+    // Setting verbose is ignored if the OIDN_VERBOSE environment variable is set, so skip then
+    if (std::getenv("OIDN_VERBOSE") == nullptr)
+    {
+      // Use a fresh, uncommitted device to avoid emitting any verbose output
+      DeviceRef verboseDevice = makeDevice();
+      verboseDevice.set("verbose", 0);
+      REQUIRE(verboseDevice.getError() == Error::None);
+      REQUIRE(verboseDevice.get<int>("verbose") == 0);
+    }
+  }
+
+  SECTION("invalid parameter name")
+  {
+    device.get<int>("qwertyuiop");
+    REQUIRE(device.getError() == Error::InvalidArgument);
+    device.get<int>(nullptr);
+    REQUIRE(device.getError() == Error::InvalidArgument);
+
+    // Setting an unknown parameter only triggers a warning, not an error
+    device.set("qwertyuiop", 1);
+    REQUIRE(device.getError() == Error::None);
+  }
+}
+
+// -------------------------------------------------------------------------------------------------
+
+struct ErrorRecord
+{
+  std::atomic<int> count;
+  Error lastError;
+  std::string lastMessage;
+
+  ErrorRecord() : count(0), lastError(Error::None) {}
+};
+
+void errorCallback(void* userPtr, Error error, const char* message)
+{
+  ErrorRecord* record = static_cast<ErrorRecord*>(userPtr);
+  record->count++;
+  record->lastError = error;
+  record->lastMessage = message ? message : "";
+}
+
+TEST_CASE("error function", "[error_function]")
+{
+  ErrorRecord record;
+
+  DeviceRef device = makeAndCommitDevice();
+  device.setErrorFunction(errorCallback, &record);
+
+  SECTION("error is reported via the callback")
+  {
+    // Trigger an error by querying an unknown device parameter
+    device.get<int>("nonexistentParameter");
+
+    REQUIRE(record.count == 1);
+    REQUIRE(record.lastError == Error::InvalidArgument);
+    REQUIRE(!record.lastMessage.empty());
+
+    // The same error is still retrievable via getError, including the message
+    const char* message = nullptr;
+    REQUIRE(device.getError(message) == Error::InvalidArgument);
+    REQUIRE(message != nullptr);
+  }
+
+  SECTION("callback not invoked on success")
+  {
+    device.get<int>("nonexistentParameter");
+    REQUIRE(record.count == 1);
+    device.getError(); // clear the stored error
+
+    // A successful operation must not invoke the error callback
+    device.get<int>("version");
+    REQUIRE(record.count == 1);
     REQUIRE(device.getError() == Error::None);
   }
 }
@@ -314,6 +431,86 @@ TEST_CASE("buffer read/write", "[buffer_rw]")
     // Verify the data
     REQUIRE(memcmp(src.data(), dst.data(), bufferSize) == 0);
   }
+
+  SECTION("partial offset")
+  {
+    // Fill the whole buffer first
+    buffer.write(0, bufferSize, src.data());
+    REQUIRE(device.getError() == Error::None);
+
+    // Read back a sub-range at a non-zero offset and verify it maps to the right bytes
+    const int offset = 64;
+    const int count  = 1000;
+    std::vector<int> partial(count, 0);
+    buffer.read(offset * sizeof(int), count * sizeof(int), partial.data());
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(memcmp(partial.data(), src.data() + offset, count * sizeof(int)) == 0);
+
+    // Overwrite a sub-range and verify only that region changed
+    std::vector<int> patch(count);
+    for (int i = 0; i < count; ++i)
+      patch[i] = -(i + 1);
+    buffer.write(offset * sizeof(int), count * sizeof(int), patch.data());
+    REQUIRE(device.getError() == Error::None);
+
+    buffer.read(0, bufferSize, dst.data());
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(memcmp(dst.data() + offset, patch.data(), count * sizeof(int)) == 0);
+    // Bytes before the patched region must be untouched
+    REQUIRE(memcmp(dst.data(), src.data(), offset * sizeof(int)) == 0);
+    // Bytes after the patched region must be untouched
+    REQUIRE(memcmp(dst.data() + offset + count, src.data() + offset + count,
+                   (N - offset - count) * sizeof(int)) == 0);
+  }
+}
+
+// -------------------------------------------------------------------------------------------------
+
+TEST_CASE("buffer properties", "[buffer_props]")
+{
+  const size_t bufferSize = 64 * 1024;
+  DeviceRef device = makeAndCommitDevice();
+
+  const bool managedMemorySupported = device.get<bool>("managedMemorySupported");
+  REQUIRE(device.getError() == Error::None);
+
+  SECTION("default buffer")
+  {
+    BufferRef buffer = device.newBuffer(bufferSize);
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(buffer.getSize() == bufferSize);
+
+    // A default buffer uses managed storage if supported, otherwise host storage; either way
+    // it is accessible by the host, so it must expose a valid data pointer
+    REQUIRE(buffer.getStorage() == (managedMemorySupported ? Storage::Managed : Storage::Host));
+    REQUIRE(buffer.getData() != nullptr);
+  }
+
+  SECTION("device buffer")
+  {
+    BufferRef buffer = device.newBuffer(bufferSize, Storage::Device);
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(buffer.getSize() == bufferSize);
+    REQUIRE(buffer.getStorage() == Storage::Device);
+  }
+
+  SECTION("managed buffer")
+  {
+    if (managedMemorySupported)
+    {
+      BufferRef buffer = device.newBuffer(bufferSize, Storage::Managed);
+      REQUIRE(device.getError() == Error::None);
+      REQUIRE(buffer.getSize() == bufferSize);
+      REQUIRE(buffer.getStorage() == Storage::Managed);
+    }
+  }
+
+  SECTION("empty buffer")
+  {
+    BufferRef buffer = device.newBuffer(0);
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(buffer.getSize() == 0);
+  }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -478,6 +675,101 @@ TEST_CASE("single filter", "[single_filter][minimal]")
   // Release the device manually to test destroying it when some other object that holds the last
   // reference to it gets destroyed
   device.release();
+}
+
+// -------------------------------------------------------------------------------------------------
+
+TEST_CASE("filter parameters", "[filter_params]")
+{
+  const int W = 137;
+  const int H = 97;
+
+  DeviceRef device = makeAndCommitDevice();
+
+  FilterRef filter = device.newFilter("RT");
+  REQUIRE(bool(filter));
+
+  SECTION("boolean parameters round-trip")
+  {
+    filter.set("hdr", true);
+    REQUIRE(filter.get<bool>("hdr") == true);
+    filter.set("hdr", false);
+    REQUIRE(filter.get<bool>("hdr") == false);
+
+    filter.set("srgb", true);
+    REQUIRE(filter.get<bool>("srgb") == true);
+    filter.set("srgb", false);
+    REQUIRE(filter.get<bool>("srgb") == false);
+
+    filter.set("cleanAux", true);
+    REQUIRE(filter.get<bool>("cleanAux") == true);
+    filter.set("cleanAux", false);
+    REQUIRE(filter.get<bool>("cleanAux") == false);
+
+    REQUIRE(device.getError() == Error::None);
+  }
+
+  SECTION("quality parameter round-trip")
+  {
+    filter.set("quality", Quality::High);
+    REQUIRE(filter.get<Quality>("quality") == Quality::High);
+    filter.set("quality", Quality::Balanced);
+    REQUIRE(filter.get<Quality>("quality") == Quality::Balanced);
+    filter.set("quality", Quality::Fast);
+    REQUIRE(filter.get<Quality>("quality") == Quality::Fast);
+    REQUIRE(device.getError() == Error::None);
+
+    // Default quality must resolve to a concrete quality mode
+    filter.set("quality", Quality::Default);
+    REQUIRE(device.getError() == Error::None);
+    const Quality resolved = filter.get<Quality>("quality");
+    REQUIRE((resolved == Quality::High || resolved == Quality::Balanced ||
+             resolved == Quality::Fast));
+
+    // An invalid quality mode must be rejected
+    filter.set("quality", static_cast<Quality>(12345));
+    REQUIRE(device.getError() == Error::InvalidArgument);
+  }
+
+  SECTION("numeric parameters round-trip")
+  {
+    filter.set("maxMemoryMB", 1234);
+    REQUIRE(filter.get<int>("maxMemoryMB") == 1234);
+
+    filter.set("inputScale", 2.5f);
+    REQUIRE(filter.get<float>("inputScale") == 2.5f);
+
+    REQUIRE(device.getError() == Error::None);
+  }
+
+  SECTION("read-only output parameters")
+  {
+    auto color  = makeConstImage(device, W, H);
+    auto output = makeImage(device, W, H);
+    setFilterImage(filter, "color",  color);
+    setFilterImage(filter, "output", output);
+    filter.set("hdr", true);
+    filter.commit();
+    REQUIRE(device.getError() == Error::None);
+
+    // These are computed by the filter (device-dependent) and must obey their documented ranges
+    const int tileAlignment = filter.get<int>("tileAlignment");
+    const int tileOverlap   = filter.get<int>("tileOverlap");
+    REQUIRE(device.getError() == Error::None);
+    REQUIRE(tileAlignment >= 1);
+    REQUIRE(tileOverlap >= 0);
+  }
+
+  SECTION("invalid parameter name")
+  {
+    // Getting an unknown parameter is an error
+    filter.get<int>("nonexistentParameter");
+    REQUIRE(device.getError() == Error::InvalidArgument);
+
+    // Setting an unknown parameter only produces a warning, not an error
+    filter.set("nonexistentParameter", 1);
+    REQUIRE(device.getError() == Error::None);
+  }
 }
 
 // -------------------------------------------------------------------------------------------------
