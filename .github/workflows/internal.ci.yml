@@ -958,6 +958,16 @@ jobs:
       artifact-path: build install deps
       cmd: scripts/build.py install --full -D OIDN_SANITIZER=Thread
 
+  build-macos-arm-ubsan:
+    secrets: inherit
+    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
+    with:
+      project: oidn
+      runs-on: '[ "macOS", "ARM64", "build" ]'
+      artifact-out: build-macos-arm-ubsan
+      artifact-path: build install deps
+      cmd: scripts/build.py install --full -D OIDN_SANITIZER=Undefined
+
   build-ios-arm:
     secrets: inherit
     uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
@@ -1076,6 +1086,21 @@ jobs:
         export TBB_ENABLE_SANITIZERS=1
         scripts/test.py --device cpu --minimal --log test.log
 
+  test-macos-arm-ubsan:
+    needs: build-macos-arm-ubsan
+    secrets: inherit
+    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
+    with:
+      project: oidn
+      runs-on: '[ "macOS", "ARM64", "build" ]' # match the build job due to UBSAN
+      artifact-in: build-macos-arm-ubsan
+      artifact-out: test-macos-arm-ubsan
+      artifact-path: test.log
+      artifact-on-failure: true
+      cmd: |
+        export TBB_ENABLE_SANITIZERS=1
+        scripts/test.py --device cpu --minimal --log test.log
+
   test-macos-arm-metal:
     needs: build-macos-arm
     secrets: inherit
@@ -1152,6 +1177,21 @@ jobs:
       runs-on: '[ "macOS", "ARM64", "build" ]' # match the build job due to TSAN
       artifact-in: build-macos-arm-tsan
       artifact-out: test-macos-arm-tsan-metal
+      artifact-path: test.log
+      artifact-on-failure: true
+      cmd: |
+        export TBB_ENABLE_SANITIZERS=1
+        scripts/test.py --device metal --minimal --log test.log
+
+  test-macos-arm-ubsan-metal:
+    needs: build-macos-arm-ubsan
+    secrets: inherit
+    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
+    with:
+      project: oidn
+      runs-on: '[ "macOS", "ARM64", "build" ]' # match the build job due to UBSAN
+      artifact-in: build-macos-arm-ubsan
+      artifact-out: test-macos-arm-ubsan-metal
       artifact-path: test.log
       artifact-on-failure: true
       cmd: |

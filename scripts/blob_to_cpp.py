@@ -8,6 +8,10 @@ import sys
 import argparse
 from array import array
 
+# Alignment of the generated blob in bytes. This ensures that data stored at aligned offsets within
+# the blob ends up at correctly aligned absolute addresses.
+BLOB_ALIGNMENT = 64
+
 def is_git_lfs_pointer(data):
   HEADER = array('B', b'version https://git-lfs.github.com/spec/')
   return data[:len(HEADER)] == HEADER
@@ -50,7 +54,7 @@ def generate(in_path, cpp_path, hpp_path, namespace):
     write_prologue(cpp_file, in_name)
     write_namespace_begin(cpp_file, scopes)
 
-    cpp_file.write('extern const unsigned char %s[%d] = {' % (var_name, in_size))
+    cpp_file.write('alignas(%d) extern const unsigned char %s[%d] = {' % (BLOB_ALIGNMENT, var_name, in_size))
     line_length = 1000
     for i in range(in_size):
       c = in_data[i]
@@ -69,7 +73,7 @@ def generate(in_path, cpp_path, hpp_path, namespace):
     with open(hpp_path, 'w') as hpp_file:
       write_prologue(hpp_file, in_name)
       write_namespace_begin(hpp_file, scopes)
-      hpp_file.write('extern const unsigned char %s[%d];\n' % (var_name, in_size))
+      hpp_file.write('alignas(%d) extern const unsigned char %s[%d];\n' % (BLOB_ALIGNMENT, var_name, in_size))
       write_namespace_end(hpp_file, scopes)
 
 if __name__ == '__main__':

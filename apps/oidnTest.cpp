@@ -334,11 +334,14 @@ TEST_CASE("buffer creation", "[buffer]")
   }
 #endif
 
+#if !defined(OIDN_SANITIZER)
+  // Passing an invalid enum value is a false positive for UBSan
   SECTION("invalid buffer storage")
   {
     BufferRef buffer = device.newBuffer(bufferSize, static_cast<Storage>(-42));
     REQUIRE(device.getError() == Error::InvalidArgument);
   }
+#endif
 
   SECTION("device released before buffer")
   {
@@ -632,9 +635,12 @@ TEST_CASE("single filter", "[single_filter][minimal]")
   setFilterImage(filter, nullptr, input);
   REQUIRE(device.getError() == Error::InvalidArgument);
 
-  // Try setting an image with invalid format
+#if !defined(OIDN_SANITIZER)
+  // Try setting an image with invalid format (passing an invalid enum value is a false positive for
+  // UBSan)
   filter.setImage("color", input->getBuffer(), static_cast<Format>(-1), W, H);
   REQUIRE(device.getError() == Error::InvalidArgument);
+#endif
 
   // Try setting an image with buffer overflow
   filter.setImage("color", input->getBuffer(), input->getFormat(), W+1, H);
