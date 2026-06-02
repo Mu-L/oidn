@@ -7,9 +7,6 @@
 #include "core/engine.h"
 #include "metal_device.h"
 
-#include <mutex>
-#include <condition_variable>
-
 OIDN_NAMESPACE_BEGIN
 
   struct MetalPipeline : public RefCount
@@ -135,20 +132,10 @@ OIDN_NAMESPACE_BEGIN
     void wait() override;
 
   private:
-    // Synchronization state for host functions submitted as command buffer completion handlers,
-    // which run on background (GCD) threads
-    struct HostFuncState
-    {
-      std::mutex mutex;
-      std::condition_variable cond;
-      int numOutstanding = 0; // number of submitted host functions that have not finished yet
-    };
-
     MetalDevice* device;
     id<MTLCommandQueue> commandQueue;
     MPSCommandBuffer* commandBuffer = nullptr;
     id<MTLLibrary> library;
-    HostFuncState hostFuncState;
   };
 
 OIDN_NAMESPACE_END

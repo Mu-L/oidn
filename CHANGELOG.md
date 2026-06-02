@@ -13,8 +13,6 @@ Version History
     combined with the handle type flag when importing external memory with
     dedicated allocation
 -   Fixed corrupted output on Apple M5 Pro/Max GPUs using Metal
--   Fixed a race condition in the Metal device that could cause a crash when
-    using a progress monitor callback
 -   Fixed a crash caused by over-releasing the MTLDevice, which could occur
     after creating and destroying multiple devices
 -   Fixed device detection failure or crash on Windows if some old Intel

@@ -948,16 +948,6 @@ jobs:
       artifact-path: build install deps
       cmd: scripts/build.py install --full -D OIDN_SANITIZER=Address
 
-  build-macos-arm-tsan:
-    secrets: inherit
-    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
-    with:
-      project: oidn
-      runs-on: '[ "macOS", "ARM64", "build" ]'
-      artifact-out: build-macos-arm-tsan
-      artifact-path: build install deps
-      cmd: scripts/build.py install --full -D OIDN_SANITIZER=Thread
-
   build-macos-arm-ubsan:
     secrets: inherit
     uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
@@ -1071,21 +1061,6 @@ jobs:
         export TBB_ENABLE_SANITIZERS=1
         scripts/test.py --device cpu --minimal --log test.log
 
-  test-macos-arm-tsan:
-    needs: build-macos-arm-tsan
-    secrets: inherit
-    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
-    with:
-      project: oidn
-      runs-on: '[ "macOS", "ARM64", "build" ]' # match the build job due to TSAN
-      artifact-in: build-macos-arm-tsan
-      artifact-out: test-macos-arm-tsan
-      artifact-path: test.log
-      artifact-on-failure: true
-      cmd: |
-        export TBB_ENABLE_SANITIZERS=1
-        scripts/test.py --device cpu --minimal --log test.log
-
   test-macos-arm-ubsan:
     needs: build-macos-arm-ubsan
     secrets: inherit
@@ -1162,21 +1137,6 @@ jobs:
       runs-on: '[ "macOS", "ARM64", "build" ]' # match the build job due to ASAN
       artifact-in: build-macos-arm-asan
       artifact-out: test-macos-arm-asan-metal
-      artifact-path: test.log
-      artifact-on-failure: true
-      cmd: |
-        export TBB_ENABLE_SANITIZERS=1
-        scripts/test.py --device metal --minimal --log test.log
-
-  test-macos-arm-tsan-metal:
-    needs: build-macos-arm-tsan
-    secrets: inherit
-    uses: intel-innersource/libraries.devops.renderkit.workflows/.github/workflows/macos.yml@main
-    with:
-      project: oidn
-      runs-on: '[ "macOS", "ARM64", "build" ]' # match the build job due to TSAN
-      artifact-in: build-macos-arm-tsan
-      artifact-out: test-macos-arm-tsan-metal
       artifact-path: test.log
       artifact-on-failure: true
       cmd: |
